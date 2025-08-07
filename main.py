@@ -12,7 +12,7 @@ import numpy as np
 # ——————————————————————————
 SYMBOL = "BTC/USDT"
 TIMEFRAME = "15m"
-LIMIT = 200
+LIMIT = 200  # تعداد کندل برای تحلیل
 SIGNALS_FILE = "signals.json"
 
 # دریافت توکن و چت آیدی از GitHub Secrets
@@ -80,14 +80,6 @@ def find_swing_low(low, window=5):
 
 def fibo_extension(entry, swing_low, ratio):
     return entry + ratio * (entry - swing_low)
-
-# ——————————————————————————
-# بررسی بسته شدن کندل 15 دقیقه‌ای
-# ——————————————————————————
-def is_candle_closed(candle_time):
-    now = datetime.now(timezone.utc)
-    candle_end = candle_time + timedelta(minutes=15)
-    return (now - candle_end).total_seconds() > 60
 
 # ——————————————————————————
 # تشخیص سیگنال خرید (فیلتر چندلایه + لاگ دقیق)
@@ -203,25 +195,35 @@ def main():
         print(f"❌ خطای دریافت داده از KuCoin: {e}")
         return
 
-    # ——— بررسی بسته شدن کندل ———
-    last_candle_time = df['datetime'].iloc[-1]
-    if not is_candle_closed(last_candle_time):
-        # ارسال پیام "سیستم فعال" هر یک ساعت
-        if datetime.now(timezone.utc).minute % 60 == 0:
+    # ——— بررسی بسته شدن کندل قبل از آخرین کندل ———
+    if len(df) < 2:
+        print("❌ داده کافی نیست — حداقل 2 کندل لازم است")
+        return
+
+    # کندل قبل از آخرین کندل (کندل -2)
+    prev_candle_start = df['datetime'].iloc[-2]
+    prev_candle_end = prev_candle_start + timedelta(minutes=15)  # زمان پایان کندل
+    now = datetime.now(timezone.utc)
+    time_since_close = (now - prev_candle_end).total_seconds()
+
+    if time_since_close < 60:
+        # فقط هر یک ساعت پیام بده
+        if now.minute % 60 == 0:
             send_telegram_message(
                 TELEGRAM_TOKEN,
                 TELEGRAM_CHAT_ID,
                 "✅ سیستم فعال است — در حال نظارت بر بازار"
             )
-        print("⏳ کندل 15 دقیقه‌ای هنوز بسته نشده — اجرا متوقف شد")
+        print(f"⏳ کندل 15 دقیقه‌ای قبلی (شروع: {prev_candle_start.strftime('%H:%M')}) هنوز کمتر از 1 دقیقه از بسته شدن آن گذشته — اجرا متوقف شد")
         return
 
-    print(f"✅ کندل 15 دقیقه‌ای بسته شد: {last_candle_time.strftime('%Y-%m-%d %H:%M')} UTC")
+    print(f"✅ کندل 15 دقیقه‌ای (قبل از آخرین کندل) بسته شد: {prev_candle_start.strftime('%Y-%m-%d %H:%M')} UTC")
 
-    # ——— بررسی سیگنال و نمایش وضعیت فیلترها ———
+    # ——— بررسی سیگنال روی داده‌های بدون آخرین کندل ———
+    df_for_signal = df.iloc[:-1].copy()  # حذف آخرین کندل (در حال تشکیل)
     print("🔍 شروع بررسی فیلترهای سیگنال...")
-    signal = check_signal(df)
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    signal = check_signal(df_for_signal)
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     if signal:
         entry = signal['entry']
@@ -231,7 +233,7 @@ def main():
 
         message = f"""
 🚀 <b>سیگنال جدید BTC/USDT (15 دقیقه)</b>
-📅 {now}
+📅 {now_str}
 🎯 <b>ورود: {entry}</b>
 ⛔ حد ضرر: {sl}
 ✅ حد سود 1: {tp1} (RR: {rr1})
@@ -241,14 +243,14 @@ def main():
         send_telegram_message(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, message)
 
         # ذخیره سیگنال
-        signal_id = f"BTC_{now.replace(' ', '_').replace(':', '')}"
+        signal_id = f"BTC_{now_str.replace(' ', '_').replace(':', '')}"
         signals_db[signal_id] = {
             "type": "BUY",
             "entry": entry,
             "stop_loss": sl,
             "take_profit": [tp1, tp2],
             "status": "open",
-            "entry_time": now,
+            "entry_time": now_str,
             "tp1_hit": False,
             "tp2_hit": False,
             "sl_hit": False
@@ -259,7 +261,7 @@ def main():
         print("❌ سیگنال صادر نشد — شرایط مهیا نیست")
 
     # ——— چک کردن رسیدن به TP/SL ———
-    current_price = df['close'].iloc[-1]
+    current_price = df['close'].iloc[-1]  # قیمت فعلی (آخرین کندل)
     updated = False
     for sid, s in signals_db.items():
         if s['status'] == 'open':
@@ -293,7 +295,7 @@ def main():
 🟢 رسیدن به حد سود: {tp_hit}
 🔴 رسیدن به حد ضرر: {sl_hit}
 🟡 در حال اجرا: {active}
-⏱ آخرین بررسی: {now}
+⏱ آخرین بررسی: {now_str}
         """
         send_telegram_message(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, report)
 
