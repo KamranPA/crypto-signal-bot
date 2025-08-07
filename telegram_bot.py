@@ -10,6 +10,10 @@ def send_telegram_message(token, chat_id, message):
         "parse_mode": "HTML"
     }
     try:
-        requests.post(url, data=payload, timeout=10)
-    except:
-        pass  # خطای ارسال نباید سیستم را متوقف کند
+        response = requests.post(url, data=payload, timeout=15)
+        if response.status_code == 200:
+            print("✅ پیام با موفقیت ارسال شد")
+        else:
+            print(f"❌ خطا در ارسال پیام: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"❌ خطا در ارسال پیام: {e}")
