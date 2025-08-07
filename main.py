@@ -176,9 +176,9 @@ def main():
         print("❌ خطا: توکن یا چت آیدی تنظیم نشده‌اند. لطفاً در GitHub Secrets بررسی کنید.")
         return
 
-    # ——— دریافت داده از Binance ———
+    # ——— دریافت داده از kucoin ———
     try:
-        exchange = ccxt.binance()
+        exchange = ccxt.kucoin()
         ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=LIMIT)
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
