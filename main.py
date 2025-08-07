@@ -5,6 +5,7 @@ import json
 import os
 from datetime import datetime, timezone, timedelta
 import requests
+import numpy as np
 
 # ——————————————————————————
 # تنظیمات
@@ -58,8 +59,6 @@ def send_telegram_message(token, chat_id, message):
 # ——————————————————————————
 # توابع تحلیلی (EMA, RSI, Swing Low, Fibonacci)
 # ——————————————————————————
-import numpy as np
-
 def ema(data, period):
     return pd.Series(data).ewm(span=period, adjust=False).mean().values
 
@@ -91,37 +90,51 @@ def is_candle_closed(candle_time):
     return (now - candle_end).total_seconds() > 60
 
 # ——————————————————————————
-# تشخیص سیگنال خرید (فیلتر چندلایه حرفه‌ای)
+# تشخیص سیگنال خرید (فیلتر چندلایه + لاگ دقیق)
 # ——————————————————————————
 def check_signal(df):
     close = df['close'].values
     high = df['high'].values
     low = df['low'].values
     volume = df['volume'].values
+    open_price = df['open'].values
 
     if len(df) < 200:
+        print("❌ فیلتر ناکافی: داده کمتر از 200 کندل")
         return None
 
-    # لایه ۱: روند صعودی بلندمدت (EMA200 در حال افزایش)
+    # ——— فیلتر ۱: روند صعودی بلندمدت ———
     ema200 = ema(close, 200)
-    if close[-1] <= ema200[-1] or ema200[-1] <= ema200[-2]:
+    trend_ok = close[-1] > ema200[-1] and ema200[-1] > ema200[-2]
+    print(f"🔍 [TREND] روند صعودی: {'[✓]' if trend_ok else '[✗]'} (قیمت={close[-1]:.0f}, EMA200={ema200[-1]:.0f})")
+
+    if not trend_ok:
+        print("❌ سیگنال متوقف شد: روند صعودی نیست")
         return None
 
-    # لایه ۲: حجم بالا (حداقل 1.8 برابر میانگین 20 کندل قبلی)
+    # ——— فیلتر ۲: حجم بالا ———
     avg_vol = np.mean(volume[-21:-1])
-    if volume[-1] <= avg_vol * 1.8 or close[-1] <= df['open'].values[-1]:
+    volume_ok = volume[-1] > avg_vol * 1.8 and close[-1] > open_price[-1]
+    print(f"🔍 [VOLUME] حجم کافی: {'[✓]' if volume_ok else '[✗]'} (حجم={volume[-1]:.0f}, میانگین={avg_vol:.0f}, x{volume[-1]/avg_vol:.1f})")
+
+    if not volume_ok:
+        print("❌ سیگنال متوقف شد: حجم کافی نیست یا کندل قرمز است")
         return None
 
-    # لایه ۳: اصلاح + بازگشت RSI
+    # ——— فیلتر ۳: اصلاح + بازگشت RSI ———
     rsi_vals = rsi(close, 14)
-    if len(rsi_vals) < 4 or rsi_vals[-1] >= 50:
-        return None
-    if not (38 < rsi_vals[-3] < 45):
-        return None
-    if not (rsi_vals[-2] < rsi_vals[-3] < rsi_vals[-1]):
+    if len(rsi_vals) < 4:
+        print("❌ فیلتر RSI: داده کافی نیست")
         return None
 
-    # لایه ۴: الگوی بازگشتی (Hammer یا Bullish Engulfing)
+    rsi_ok = (38 < rsi_vals[-3] < 45) and (rsi_vals[-2] < rsi_vals[-3] < rsi_vals[-1]) and (rsi_vals[-1] < 50)
+    print(f"🔍 [RSI] وضعیت RSI: {'[✓]' if rsi_ok else '[✗]'} (RSI[-3]={rsi_vals[-3]:.1f}, RSI[-1]={rsi_vals[-1]:.1f})")
+
+    if not rsi_ok:
+        print("❌ سیگنال متوقف شد: شرایط RSI برقرار نیست")
+        return None
+
+    # ——— فیلتر ۴: الگوی بازگشتی ———
     last = df.iloc[-1]
     prev = df.iloc[-2]
     body = abs(last['open'] - last['close'])
@@ -130,20 +143,26 @@ def check_signal(df):
     is_hammer = lower_wick >= 2 * body and last['close'] > last['open']
     is_bullish_engulfing = last['close'] > prev['open'] and last['open'] < prev['close'] and last['close'] > last['open']
 
-    if not (is_hammer or is_bullish_engulfing):
+    pattern_ok = is_hammer or is_bullish_engulfing
+    pattern_name = "Hammer" if is_hammer else ("Bullish Engulfing" if is_bullish_engulfing else "ندارد")
+    print(f"🔍 [PATTERN] الگوی بازگشتی: {'[✓] ' + pattern_name if pattern_ok else '[✗] ' + pattern_name}")
+
+    if not pattern_ok:
+        print("❌ سیگنال متوقف شد: الگوی بازگشتی تشخیص داده نشد")
         return None
 
-    # ——————————————————————————
-    # محاسبه ورود، حد ضرر، حد سود (مبتنی بر ساختار قیمت)
-    # ——————————————————————————
+    # ——— همه فیلترها عبور داده شد ———
+    print("✅ تمام فیلترها عبور داده شدند — سیگنال معتبر است")
+
+    # ——— محاسبه ورود، حد ضرر، حد سود ———
     entry = last['close']
-
     swing_low = find_swing_low(low, window=5)
+
     if not swing_low or swing_low >= entry:
+        print(f"❌ خطای محاسبه حد ضرر: swing_low={swing_low}, entry={entry}")
         return None
 
-    stop_loss = swing_low * 0.997  # 0.3% زیر آخرین سطح تقاضا
-
+    stop_loss = swing_low * 0.997
     tp1 = fibo_extension(entry, swing_low, 1.618)
     tp2 = fibo_extension(entry, swing_low, 2.618)
 
@@ -173,16 +192,9 @@ def main():
         print("❌ خطا: توکن یا چت آیدی تنظیم نشده‌اند. لطفاً در GitHub Secrets بررسی کنید.")
         return
 
-    # ——— تست ارسال پیام ———
-    send_telegram_message(
-        TELEGRAM_TOKEN,
-        TELEGRAM_CHAT_ID,
-        "🔧 تست: سیستم اجرا شد و به تلگرام متصل است. در حال دریافت داده از KuCoin..."
-    )
-
     # ——— دریافت داده از KuCoin ———
     try:
-        exchange = ccxt.kucoin()  # ✅ تغییر به KuCoin برای جلوگیری از خطای 451
+        exchange = ccxt.kucoin()
         ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=LIMIT)
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
