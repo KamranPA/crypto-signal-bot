@@ -8,6 +8,12 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    # ✅ اطمینان از اینکه فقط یک اجرا در هر زمان اجرا می‌شود
+    concurrency: btc-signal-job
+
+    # ✅ محدود کردن زمان اجرا (اگر بیش از 5 دقیقه طول کشید، متوقف شود)
+    timeout-minutes: 5
+
     steps:
       - uses: actions/checkout@v4
 
