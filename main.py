@@ -110,6 +110,10 @@ def main():
 ⏱ آخرین بررسی: {now}
         """
         send_telegram_message(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, daily_report)
+# main.py — اضافه کنید (فوق‌العاده مهم برای دیباگ)
+print("🔍 در حال بررسی متغیرهای محیطی...")
+print(f"TELEGRAM_BOT_TOKEN: {' موجود' if os.getenv('TELEGRAM_BOT_TOKEN') else 'None'}")
+print(f"TELEGRAM_CHAT_ID: {os.getenv('TELEGRAM_CHAT_ID', 'Not Set')}")
 
 if __name__ == "__main__":
     main()
