@@ -4,14 +4,14 @@ import pandas as pd
 import json
 import os
 from datetime import datetime, timezone, timedelta
-import requests  # مستقیماً برای ارسال پیام به تلگرام
+import requests
 
 # ——————————————————————————
 # تنظیمات
 # ——————————————————————————
 SYMBOL = "BTC/USDT"
 TIMEFRAME = "15m"
-LIMIT = 200  # تعداد کندل برای تحلیل
+LIMIT = 200
 SIGNALS_FILE = "signals.json"
 
 # دریافت توکن و چت آیدی از GitHub Secrets
@@ -35,6 +35,10 @@ signals_db = load_signals()
 # ارسال پیام به تلگرام با requests
 # ——————————————————————————
 def send_telegram_message(token, chat_id, message):
+    if not token or not chat_id:
+        print("❌ خطا: توکن یا چت آیدی تنظیم نشده‌اند.")
+        return
+
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -52,7 +56,7 @@ def send_telegram_message(token, chat_id, message):
         print(f"❌ خطا در اتصال به تلگرام: {e}")
 
 # ——————————————————————————
-# توابع تحلیلی (EMA, RSI, Swing Low/High)
+# توابع تحلیلی (EMA, RSI, Swing Low, Fibonacci)
 # ——————————————————————————
 import numpy as np
 
@@ -75,13 +79,6 @@ def find_swing_low(low, window=5):
             return low[i]
     return None
 
-def find_swing_high(high, window=5):
-    for i in range(len(high) - window - 1, 0, -1):
-        if all(high[i] > high[i - j] for j in range(1, window + 1)) and \
-           all(high[i] > high[i + j] for j in range(1, window + 1)):
-            return high[i]
-    return None
-
 def fibo_extension(entry, swing_low, ratio):
     return entry + ratio * (entry - swing_low)
 
@@ -91,7 +88,7 @@ def fibo_extension(entry, swing_low, ratio):
 def is_candle_closed(candle_time):
     now = datetime.now(timezone.utc)
     candle_end = candle_time + timedelta(minutes=15)
-    return (now - candle_end).total_seconds() > 60  # حداقل 1 دقیقه از بسته شدن گذشته باشد
+    return (now - candle_end).total_seconds() > 60
 
 # ——————————————————————————
 # تشخیص سیگنال خرید (فیلتر چندلایه حرفه‌ای)
@@ -176,14 +173,22 @@ def main():
         print("❌ خطا: توکن یا چت آیدی تنظیم نشده‌اند. لطفاً در GitHub Secrets بررسی کنید.")
         return
 
-    # ——— دریافت داده از kucoin ———
+    # ——— تست ارسال پیام ———
+    send_telegram_message(
+        TELEGRAM_TOKEN,
+        TELEGRAM_CHAT_ID,
+        "🔧 تست: سیستم اجرا شد و به تلگرام متصل است. در حال دریافت داده از KuCoin..."
+    )
+
+    # ——— دریافت داده از KuCoin ———
     try:
-        exchange = ccxt.kucoin()
+        exchange = ccxt.kucoin()  # ✅ تغییر به KuCoin برای جلوگیری از خطای 451
         ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=LIMIT)
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+        print(f"✅ داده از KuCoin دریافت شد: {len(df)} کندل")
     except Exception as e:
-        print(f"❌ خطای دریافت داده از Binance: {e}")
+        print(f"❌ خطای دریافت داده از KuCoin: {e}")
         return
 
     # ——— بررسی بسته شدن کندل ———
