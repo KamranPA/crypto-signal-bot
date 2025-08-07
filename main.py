@@ -213,11 +213,13 @@ def main():
                 TELEGRAM_CHAT_ID,
                 "✅ سیستم فعال است — در حال نظارت بر بازار"
             )
+        print("⏳ کندل 15 دقیقه‌ای هنوز بسته نشده — اجرا متوقف شد")
         return
 
     print(f"✅ کندل 15 دقیقه‌ای بسته شد: {last_candle_time.strftime('%Y-%m-%d %H:%M')} UTC")
 
-    # ——— بررسی سیگنال ———
+    # ——— بررسی سیگنال و نمایش وضعیت فیلترها ———
+    print("🔍 شروع بررسی فیلترهای سیگنال...")
     signal = check_signal(df)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -253,6 +255,8 @@ def main():
         }
         save_signals(signals_db)
         print(f"✅ سیگنال ذخیره شد: {signal_id}")
+    else:
+        print("❌ سیگنال صادر نشد — شرایط مهیا نیست")
 
     # ——— چک کردن رسیدن به TP/SL ———
     current_price = df['close'].iloc[-1]
