@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timezone, timedelta
 import requests
 import numpy as np
+import subprocess
 
 # ——————————————————————————
 # تنظیمات
@@ -133,7 +134,7 @@ def check_buy_signal(df):
 
     # ——— فیلتر ۳: اصلاح + بازگشت RSI ———
     rsi_vals = rsi(close, 14)
-    if len(rsi_vals) < 5:  # ✅ افزایش از 4 به 5 برای اطمینان از وجود rsi_vals[-3]
+    if len(rsi_vals) < 5:
         print("❌ [BUY] RSI: داده کافی نیست")
         return None
 
@@ -230,7 +231,7 @@ def check_sell_signal(df):
 
     # ——— فیلتر ۳: اصلاح + بازگشت RSI ———
     rsi_vals = rsi(close, 14)
-    if len(rsi_vals) < 5:  # ✅ افزایش از 4 به 5
+    if len(rsi_vals) < 5:
         print("❌ [SELL] RSI: داده کافی نیست")
         return None
 
