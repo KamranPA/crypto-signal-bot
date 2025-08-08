@@ -2,17 +2,14 @@ name: Run BTC Signal Bot
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
-  workflow_dispatch:
+    - cron: '*/15 * * * *'  # هر ۱۵ دقیقه
+  workflow_dispatch:         # امکان اجرای دستی
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    # ✅ اطمینان از اینکه فقط یک اجرا در هر زمان اجرا می‌شود
+    # ✅ جلوگیری از تداخل اجراها
     concurrency: btc-signal-job
-
-    # ✅ محدود کردن زمان اجرا (اگر بیش از 5 دقیقه طول کشید، متوقف شود)
-    timeout-minutes: 5
 
     steps:
       - uses: actions/checkout@v4
@@ -38,5 +35,6 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add signals.json
-          git commit -m "Update signals.json" || exit 0
+          git add last_hour_check.txt  # ✅ اضافه شده
+          git commit -m "Update signals and hourly check" || exit 0
           git push
