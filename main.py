@@ -101,7 +101,6 @@ def check_buy_signal(df):
     volume = df['volume'].values
     open_price = df['open'].values
 
-    # 🔧 تغییر از 200 به 199 — زیرا آخرین کندل حذف شده
     if len(df) < 199:
         print("❌ [BUY] فیلتر ناکافی: داده کمتر از 199 کندل")
         return None
@@ -123,10 +122,10 @@ def check_buy_signal(df):
 
     # ——— فیلتر ۲: حجم بالا ———
     avg_vol = np.mean(volume[-21:-1])
-    volume_ok = volume[-1] > avg_vol * 0.5 and close[-1] > open_price[-1]  # ✅ کاهش به 0.7x
+    volume_ok = volume[-1] > avg_vol * 0.6 and close[-1] > open_price[-1]
     print(f"🔍 [BUY-VOL] حجم کافی: {'[✓]' if volume_ok else '[✗]'} (حجم={volume[-1]:.0f}, میانگین={avg_vol:.0f}, x{volume[-1]/avg_vol:.1f})")
     if not volume_ok:
-        if volume[-1] <= avg_vol * 0.5:
+        if volume[-1] <= avg_vol * 0.6:
             print(f"❌ [BUY-VOL] رد شد: حجم کم (ضریب: {volume[-1]/avg_vol:.1f}x)")
         else:
             print("❌ [BUY-VOL] رد شد: کندل قرمز است")
@@ -199,7 +198,6 @@ def check_sell_signal(df):
     volume = df['volume'].values
     open_price = df['open'].values
 
-    # 🔧 تغییر از 200 به 199 — زیرا آخرین کندل حذف شده
     if len(df) < 199:
         print("❌ [SELL] فیلتر ناکافی: داده کمتر از 199 کندل")
         return None
@@ -221,10 +219,10 @@ def check_sell_signal(df):
 
     # ——— فیلتر ۲: حجم بالا ———
     avg_vol = np.mean(volume[-21:-1])
-    volume_ok = volume[-1] > avg_vol * 0.5 and close[-1] < open_price[-1]  # ✅ کاهش به 0.7x
+    volume_ok = volume[-1] > avg_vol * 0.6 and close[-1] < open_price[-1]
     print(f"🔍 [SELL-VOL] حجم کافی: {'[✓]' if volume_ok else '[✗]'} (حجم={volume[-1]:.0f}, میانگین={avg_vol:.0f}, x{volume[-1]/avg_vol:.1f})")
     if not volume_ok:
-        if volume[-1] <= avg_vol * 0.5:
+        if volume[-1] <= avg_vol * 0.6:
             print(f"❌ [SELL-VOL] رد شد: حجم کم (ضریب: {volume[-1]/avg_vol:.1f}x)")
         else:
             print("❌ [SELL-VOL] رد شد: کندل سبز است")
@@ -270,7 +268,7 @@ def check_sell_signal(df):
         print(f"❌ [SELL] خطای حد ضرر: swing_high={swing_high}")
         return None
 
-    stop_loss = swing_high * 1.003  # 0.3% بالاتر
+    stop_loss = swing_high * 1.003
     tp1 = fibo_retracement(swing_high, entry, 0.618)
     tp2 = fibo_retracement(swing_high, entry, 1.000)
 
@@ -323,12 +321,28 @@ def main():
     time_since_close = (now - prev_candle_end).total_seconds()
 
     if time_since_close < 60:
-        if now.minute % 60 == 0:
+        # ✅ ارسال پیام "سیستم فعال" هر یک ساعت (حتی اگر دقیقاً در 00 نباشد)
+        last_hour_check_file = "last_hour_check.txt"
+        last_check_time = None
+
+        if os.path.exists(last_hour_check_file):
+            with open(last_hour_check_file, "r") as f:
+                try:
+                    last_check_time = datetime.fromisoformat(f.read().strip())
+                except:
+                    last_check_time = None
+
+        time_since_last_check = (now - last_check_time).total_seconds() if last_check_time else 3600
+
+        if time_since_last_check >= 3500:  # هر 58-60 دقیقه
             send_telegram_message(
                 TELEGRAM_TOKEN,
                 TELEGRAM_CHAT_ID,
                 "✅ سیستم فعال است — در حال نظارت بر بازار"
             )
+            with open(last_hour_check_file, "w") as f:
+                f.write(now.isoformat())
+
         print(f"⏳ کندل 15 دقیقه‌ای قبلی (شروع: {prev_candle_start.strftime('%H:%M')}) هنوز کمتر از 1 دقیقه از بسته شدن آن گذشته — اجرا متوقف شد")
         return
 
