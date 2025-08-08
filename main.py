@@ -133,7 +133,7 @@ def check_buy_signal(df):
 
     # ——— فیلتر ۳: اصلاح + بازگشت RSI ———
     rsi_vals = rsi(close, 14)
-    if len(rsi_vals) < 6:  # ✅ برای سیگنال خرید: حداقل 6 عنصر
+    if len(rsi_vals) < 7:  # ✅ افزایش از 6 به 7 برای اطمینان از وجود rsi_vals[-3]
         print("❌ [BUY] RSI: داده کافی نیست")
         return None
 
