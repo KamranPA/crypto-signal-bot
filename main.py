@@ -198,7 +198,7 @@ def check_sell_signal(df):
     volume = df['volume'].values
     open_price = df['open'].values
 
-    if len(df) < 200:
+    if len(df) < 199:
         print("❌ [SELL] فیلتر ناکافی: داده کمتر از 200 کندل")
         return None
 
