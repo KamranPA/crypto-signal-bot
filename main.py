@@ -101,6 +101,7 @@ def check_buy_signal(df):
     volume = df['volume'].values
     open_price = df['open'].values
 
+    # 🔧 تغییر از 200 به 199 — زیرا آخرین کندل حذف شده
     if len(df) < 199:
         print("❌ [BUY] فیلتر ناکافی: داده کمتر از 199 کندل")
         return None
@@ -122,10 +123,10 @@ def check_buy_signal(df):
 
     # ——— فیلتر ۲: حجم بالا ———
     avg_vol = np.mean(volume[-21:-1])
-    volume_ok = volume[-1] > avg_vol * 1.8 and close[-1] > open_price[-1]
+    volume_ok = volume[-1] > avg_vol * 0.7 and close[-1] > open_price[-1]  # ✅ کاهش به 0.7x
     print(f"🔍 [BUY-VOL] حجم کافی: {'[✓]' if volume_ok else '[✗]'} (حجم={volume[-1]:.0f}, میانگین={avg_vol:.0f}, x{volume[-1]/avg_vol:.1f})")
     if not volume_ok:
-        if volume[-1] <= avg_vol * 1.8:
+        if volume[-1] <= avg_vol * 0.7:
             print(f"❌ [BUY-VOL] رد شد: حجم کم (ضریب: {volume[-1]/avg_vol:.1f}x)")
         else:
             print("❌ [BUY-VOL] رد شد: کندل قرمز است")
@@ -198,8 +199,9 @@ def check_sell_signal(df):
     volume = df['volume'].values
     open_price = df['open'].values
 
+    # 🔧 تغییر از 200 به 199 — زیرا آخرین کندل حذف شده
     if len(df) < 199:
-        print("❌ [SELL] فیلتر ناکافی: داده کمتر از 200 کندل")
+        print("❌ [SELL] فیلتر ناکافی: داده کمتر از 199 کندل")
         return None
 
     # ——— فیلتر ۱: روند نزولی بلندمدت ———
@@ -219,10 +221,10 @@ def check_sell_signal(df):
 
     # ——— فیلتر ۲: حجم بالا ———
     avg_vol = np.mean(volume[-21:-1])
-    volume_ok = volume[-1] > avg_vol * 1.8 and close[-1] < open_price[-1]
+    volume_ok = volume[-1] > avg_vol * 0.7 and close[-1] < open_price[-1]  # ✅ کاهش به 0.7x
     print(f"🔍 [SELL-VOL] حجم کافی: {'[✓]' if volume_ok else '[✗]'} (حجم={volume[-1]:.0f}, میانگین={avg_vol:.0f}, x{volume[-1]/avg_vol:.1f})")
     if not volume_ok:
-        if volume[-1] <= avg_vol * 1.8:
+        if volume[-1] <= avg_vol * 0.7:
             print(f"❌ [SELL-VOL] رد شد: حجم کم (ضریب: {volume[-1]/avg_vol:.1f}x)")
         else:
             print("❌ [SELL-VOL] رد شد: کندل سبز است")
