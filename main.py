@@ -101,8 +101,8 @@ def check_buy_signal(df):
     volume = df['volume'].values
     open_price = df['open'].values
 
-    if len(df) < 200:
-        print("❌ [BUY] فیلتر ناکافی: داده کمتر از 200 کندل")
+    if len(df) < 199:
+        print("❌ [BUY] فیلتر ناکافی: داده کمتر از 199 کندل")
         return None
 
     # ——— فیلتر ۱: روند صعودی بلندمدت ———
