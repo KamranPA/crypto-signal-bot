@@ -133,7 +133,7 @@ def check_buy_signal(df):
 
     # ——— فیلتر ۳: اصلاح + بازگشت RSI ———
     rsi_vals = rsi(close, 14)
-    if len(rsi_vals) < 5:
+    if len(rsi_vals) < 6:  # ✅ افزایش از 5 به 6 برای اطمینان از وجود rsi_vals[-3]
         print("❌ [BUY] RSI: داده کافی نیست")
         return None
 
@@ -230,7 +230,7 @@ def check_sell_signal(df):
 
     # ——— فیلتر ۳: اصلاح + بازگشت RSI ———
     rsi_vals = rsi(close, 14)
-    if len(rsi_vals) < 5:
+    if len(rsi_vals) < 6:  # ✅ افزایش از 5 به 6
         print("❌ [SELL] RSI: داده کافی نیست")
         return None
 
@@ -321,7 +321,7 @@ def main():
     time_since_close = (now - prev_candle_end).total_seconds()
 
     if time_since_close < 60:
-        # ✅ ارسال پیام "سیستم فعال" هر یک ساعت (هر 55 دقیقه)
+        # ✅ ارسال پیام "سیستم فعال" هر یک ساعت
         last_hour_check_file = "last_hour_check.txt"
         last_check_time = None
 
