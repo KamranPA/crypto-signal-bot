@@ -2,16 +2,13 @@ name: Run BTC Signal Bot
 
 on:
   schedule:
-    # ✅ دقیقاً در دقایق 00, 15, 30, 45 هر ساعت
-    - cron: '0,15,30,45 * * * *'
-  workflow_dispatch:  # اجازه اجرای دستی
+    - cron: '0,15,30,45 * * * *'  # ✅ دقیقاً در 00, 15, 30, 45
+  workflow_dispatch:               # ✅ اجازه اجرای دستی
 
 jobs:
   run:
     runs-on: ubuntu-latest
-
-    # ✅ جلوگیری از تداخل اجراها
-    concurrency: btc-signal-job
+    concurrency: btc-signal-job  # ✅ فقط یک اجرا در هر زمان
 
     steps:
       - name: Checkout code
