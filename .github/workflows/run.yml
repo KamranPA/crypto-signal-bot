@@ -1,40 +1,67 @@
 name: Run BTC Signal Bot
 
+# ——————————————————————————
+# اجرای خودکار هر ۱۵ دقیقه + امکان اجرای دستی
+# ——————————————————————————
 on:
   schedule:
     - cron: '*/15 * * * *'  # هر ۱۵ دقیقه
   workflow_dispatch:         # امکان اجرای دستی
 
+# ——————————————————————————
+# تنظیمات جهت جلوگیری از تداخل و اجازه push
+# ——————————————————————————
 jobs:
   run:
     runs-on: ubuntu-latest
-    # ✅ جلوگیری از تداخل اجراها
+
+    # ✅ جلوگیری از اجرای همزمان (فقط یک اجرا در هر زمان)
     concurrency: btc-signal-job
 
     steps:
-      - uses: actions/checkout@v4
+      # ——— مرحله ۱: دریافت کد از ریپازیتوری ———
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # ✅ مهم: اجازه دادن push با توکن شخصی
+          persist-credentials: true
+          # استفاده از توکن GitHub برای دسترسی به ریپازیتوری
+          token: ${{ secrets.GITHUB_TOKEN }}
 
+      # ——— مرحله ۲: نصب پایتون ———
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
+      # ——— مرحله ۳: نصب وابستگی‌ها ———
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install ccxt requests pandas numpy
 
+      # ——— مرحله ۴: اجرای اسکریپت اصلی ———
       - name: Run main.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
 
-      - name: Commit and push signals.json if changed
+      # ——— مرحله ۵: ذخیره تغییرات در ریپازیتوری ———
+      - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+
+          # اضافه کردن فایل‌های تغییر یافته
           git add signals.json
-          git add last_hour_check.txt  # ✅ اضافه شده
-          git commit -m "Update signals and hourly check" || exit 0
-          git push
+          git add last_hour_check.txt
+
+          # ایجاد commit فقط اگر تغییری وجود داشته باشد
+          if git diff-index --quiet HEAD --; then
+            echo "✅ هیچ تغییری نیست — commit انجام نشد"
+          else
+            git commit -m "🔄 Update signals and hourly check" || exit 0
+            git push
+            echo "✅ تغییرات با موفقیت push شدند"
+          fi
