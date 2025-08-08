@@ -6,7 +6,6 @@ import os
 from datetime import datetime, timezone, timedelta
 import requests
 import numpy as np
-import subprocess
 
 # ——————————————————————————
 # تنظیمات
@@ -322,7 +321,7 @@ def main():
     time_since_close = (now - prev_candle_end).total_seconds()
 
     if time_since_close < 60:
-        # ✅ ارسال پیام "سیستم فعال" هر یک ساعت
+        # ✅ ارسال پیام "سیستم فعال" هر یک ساعت (هر 55 دقیقه)
         last_hour_check_file = "last_hour_check.txt"
         last_check_time = None
 
@@ -335,7 +334,7 @@ def main():
 
         time_since_last_check = (now - last_check_time).total_seconds() if last_check_time else 3600
 
-        if time_since_last_check >= 3500:  # هر 58-60 دقیقه
+        if time_since_last_check >= 3300:  # هر 55 دقیقه
             send_telegram_message(
                 TELEGRAM_TOKEN,
                 TELEGRAM_CHAT_ID,
