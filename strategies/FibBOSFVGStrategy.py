@@ -4,7 +4,8 @@
 با پشتیبانی از ارسال سیگنال به تلگرام و لاگ‌گیری امن
 """
 
-import os  # ✅ اضافه شد
+import os
+import logging  # ✅ اضافه شد
 import backtrader as bt
 from utils.fib_levels import calculate_fib_levels
 from utils.detect_fvg import detect_fvg
