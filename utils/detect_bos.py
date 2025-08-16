@@ -8,10 +8,10 @@ def detect_bos(high, low, lookback=50):
     if len(high) < lookback + 5:
         return None
 
-    recent_lows = list(low[-lookback:])
-    recent_highs = list(high[-lookback:])
-
     # BOS نزولی: شکست HL
+    recent_highs = list(high.get(-lookback, lookback))
+    recent_lows = list(low.get(-lookback, lookback))
+
     for i in range(-5, -2):
         if i >= -len(recent_lows): continue
         if recent_lows[i] > recent_lows[i-1] and recent_lows[i] > recent_lows[i+1]:  # HL
