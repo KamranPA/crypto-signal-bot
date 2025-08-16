@@ -1,6 +1,6 @@
 # backtest.py
 """
-Crypto Backtest Engine - با پشتیبانی از بازه زمانی (تاریخ شروع و پایان)
+Crypto Backtest Engine - نسخه نهایی با پشتیبانی از KuCoin و تاریخ
 """
 
 import os
@@ -38,25 +38,40 @@ config = load_config()
 os.makedirs('logs', exist_ok=True)
 os.makedirs('data/cache', exist_ok=True)
 
-# --- تبدیل تاریخ به میلی‌ثانیه برای ccxt ---
+# --- تبدیل تاریخ به میلی‌ثانیه ---
 def date_to_milliseconds(date_str):
     """تبدیل 'YYYY-MM-DD' به میلی‌ثانیه"""
-    dt = datetime.strptime(date_str, "%Y-%m-%d")
-    dt = pytz.UTC.localize(dt)  # محلی‌سازی به UTC
-    return int(dt.timestamp() * 1000)
+    if not date_str:
+        logger.error("❌ تاریخ ورودی خالی است.")
+        sys.exit(1)
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        dt = pytz.UTC.localize(dt)
+        return int(dt.timestamp() * 1000)
+    except ValueError as e:
+        logger.error(f"❌ فرمت تاریخ نادرست است '{date_str}': {e}")
+        sys.exit(1)
 
-# --- دریافت داده با بازه تاریخی ---
-def fetch_binance_data(symbol, timeframe, start_date, end_date=None):
+# --- دریافت داده از KuCoin ---
+def fetch_kucoin_data(symbol, timeframe, start_date, end_date=None):
     import ccxt
     try:
-        exchange = ccxt.binance({
+        exchange = ccxt.kucoin({
             'enableRateLimit': True,
-            'options': {'defaultType': 'spot'}
+            'options': {
+                'defaultType': 'spot'
+            }
         })
+        exchange.load_markets()
+
+        # بررسی تاریخ‌ها
+        if not start_date or not end_date:
+            logger.error("❌ تاریخ شروع یا پایان خالی است.")
+            return None
 
         since = date_to_milliseconds(start_date)
         until = date_to_milliseconds(end_date) if end_date else exchange.milliseconds()
-        
+
         all_bars = []
         limit = 1000  # حداکثر کندل در هر درخواست
         current = since
@@ -80,7 +95,7 @@ def fetch_binance_data(symbol, timeframe, start_date, end_date=None):
                     break  # داده تمام شده
 
             except Exception as e:
-                logger.warning(f"⚠️ خطا در دریافت داده: {e}")
+                logger.warning(f"⚠️ خطا در دریافت داده از KuCoin: {e}")
                 break
 
         if not all_bars:
@@ -97,7 +112,7 @@ def fetch_binance_data(symbol, timeframe, start_date, end_date=None):
         return df
 
     except Exception as e:
-        logger.error(f"❌ خطا در دریافت داده {symbol}: {e}")
+        logger.error(f"❌ خطا در ارتباط با KuCoin: {e}")
         return None
 
 # --- ایمپورت استراتژی ---
@@ -109,7 +124,7 @@ except Exception as e:
 
 # --- اجرای اصلی ---
 def run_backtest():
-    logger.info("🚀 شروع بکتست با بازه زمانی مشخص")
+    logger.info("🚀 شروع بکتست با بازه زمانی مشخص و KuCoin")
 
     cerebro = bt.Cerebro()
     cerebro.addstrategy(FibBOSFVGStrategy,
@@ -126,11 +141,11 @@ def run_backtest():
     # افزودن داده‌ها
     data_loaded = False
     for symbol in config['symbols']:
-        df = fetch_binance_data(
+        df = fetch_kucoin_data(
             symbol=symbol,
             timeframe=config['timeframe'],
-            start_date=config['start_date'],
-            end_date=config['end_date']
+            start_date=config.get('start_date', '2024-01-01'),
+            end_date=config.get('end_date', '2024-06-01')
         )
         if df is not None and len(df) > 10:
             data_feed = bt.feeds.PandasData(dataname=df, name=symbol)
