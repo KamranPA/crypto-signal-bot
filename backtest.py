@@ -1,6 +1,6 @@
 # backtest.py
 """
-بکتست ساده برای BTC/USDT با ارسال سیگنال به تلگرام
+بکتست پیشرفته با FVG + BOS + فیبوناچی
 """
 
 import ccxt
@@ -8,6 +8,10 @@ import pandas as pd
 import backtrader as bt
 import requests
 import os
+
+# --- ایمپورت توابع ---
+from utils.detect_fvg import detect_fvg
+from utils.detect_bos import detect_bos
 
 # --- تابع ارسال به تلگرام ---
 def send_telegram(message):
@@ -27,8 +31,8 @@ def send_telegram(message):
     except Exception as e:
         print(f"❌ خطا در ارسال به تلگرام: {e}")
 
-# --- استراتژی ---
-class SimpleFibStrategy(bt.Strategy):
+# --- استراتژی پیشرفته ---
+class FibBOSFVGStrategy(bt.Strategy):
     def __init__(self):
         self.data_close = self.datas[0].close
         self.data_high = self.datas[0].high
@@ -41,6 +45,7 @@ class SimpleFibStrategy(bt.Strategy):
         if len(self) < 70:
             return
 
+        # محاسبه فیبوناچی
         highs = self.data_high.get(-70, 70)
         lows = self.data_low.get(-70, 70)
         if len(highs) == 0 or len(lows) == 0:
@@ -51,13 +56,23 @@ class SimpleFibStrategy(bt.Strategy):
         fib_71 = recent_low + 0.71 * (recent_high - recent_low)
         current_price = self.data_close[0]
 
-        if current_price >= fib_71:
+        # تشخیص FVG
+        fvg = detect_fvg(self.data_high, self.data_low, self.data_close)
+        # تشخیص BOS
+        bos = detect_bos(self.data_high, self.data_low, lookback=50)
+
+        # ورود شورت: فیبوناچی + BOS نزولی + FVG نزولی
+        if (current_price >= fib_71
+                and bos == 'bearish'
+                and fvg and fvg['type'] == 'bearish'):
+
             msg = (
-                f"🔻 <b>سیگنال فروش (SHORT)</b>\n"
+                f"🔻 <b>سیگنال فروش قوی (SHORT)</b>\n"
                 f"📌 ارز: BTC/USDT\n"
                 f"💰 قیمت ورود: {current_price:.2f}\n"
                 f"🎯 هدف: {recent_low:.2f}\n"
-                f"🛑 حد ضرر: {recent_high * 1.01:.2f}"
+                f"🛑 حد ضرر: {recent_high * 1.01:.2f}\n"
+                f"🔍 دلیل: FVG + BOS + Fib 71%"
             )
             print(msg)
             send_telegram(msg)
@@ -78,7 +93,7 @@ if __name__ == '__main__':
     cerebro = bt.Cerebro()
     data_feed = bt.feeds.PandasData(dataname=df)
     cerebro.adddata(data_feed)
-    cerebro.addstrategy(SimpleFibStrategy)
+    cerebro.addstrategy(FibBOSFVGStrategy)
     cerebro.broker.setcash(10000)
     cerebro.broker.setcommission(commission=0.001)
 
