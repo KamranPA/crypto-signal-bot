@@ -1,6 +1,6 @@
 # backtest.py
 """
-بکتست با ورودی‌های دستی: ارز، تایم‌فریم، تاریخ
+بکتست با گزارش‌گیری کامل: تعداد سیگنال، SL، TP
 """
 
 import ccxt
@@ -18,7 +18,6 @@ def load_config():
         with open('config/dynamic_settings.json', 'r') as f:
             return json.load(f)
     else:
-        # پیش‌فرض
         return {
             "symbol": "BTC/USDT",
             "timeframe": "15m",
@@ -53,16 +52,71 @@ def send_telegram(message):
             'parse_mode': 'HTML'
         }
         requests.post(url, data=payload, timeout=10)
+        print("✅ سیگنال به تلگرام ارسال شد")
     except Exception as e:
         print(f"❌ خطا در ارسال به تلگرام: {e}")
 
-# --- استراتژی ---
+# --- استراتژی با گزارش‌گیری ---
 class FibBOSFVGStrategy(bt.Strategy):
+    params = (
+        ('print_log', True),
+    )
+
     def __init__(self):
         self.data_close = self.datas[0].close
         self.data_high = self.datas[0].high
         self.data_low = self.datas[0].low
         self.order = None
+        self.buy_price = None
+
+        # متغیرهای گزارش
+        self.total_signals = 0
+        self.sl_hits = 0
+        self.tp_hits = 0
+
+    def log(self, txt, debug=False):
+        if self.params.print_log or debug:
+            print(f"{self.datas[0].datetime.datetime(0)} | {txt}")
+
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(f"BUY EXECUTED, Price: {order.executed.price:.2f}")
+                self.buy_price = order.executed.price
+            elif order.issell():
+                self.log(f"SELL EXECUTED, Price: {order.executed.price:.2f}")
+                self.buy_price = None
+
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            self.log('Order Canceled/Margin/Rejected')
+
+        self.order = None
+
+    def notify_trade(self, trade):
+        if not trade.isclosed:
+            return
+
+        profit = trade.pnlcomm
+        self.log(f"OPERATION PROFIT, GROSS {trade.pnl:.2f}, NET {profit:.2f}")
+
+        # تشخیص نوع بسته شدن
+        if self.buy_price:
+            if trade.exitprice < self.buy_price:
+                self.sl_hits += 1
+                self.log("✅ حد ضرر فعال شد (SL)")
+            else:
+                self.tp_hits += 1
+                self.log("✅ حد سود فعال شد (TP)")
+        else:
+            if trade.exitprice > self.buy_price:
+                self.sl_hits += 1
+                self.log("✅ حد ضرر فعال شد (SL)")
+            else:
+                self.tp_hits += 1
+                self.log("✅ حد سود فعال شد (TP)")
 
     def next(self):
         if self.order:
@@ -83,23 +137,39 @@ class FibBOSFVGStrategy(bt.Strategy):
         fvg = detect_fvg(self.data_high, self.data_low, self.data_close)
         bos = detect_bos(self.data_high, self.data_low, lookback=50)
 
+        # ورود شورت
         if (current_price >= fib_71
                 and bos == 'bearish'
                 and fvg and fvg['type'] == 'bearish'):
 
-            msg = (
-                f"🔻 <b>سیگنال فروش (SHORT)</b>\n"
-                f"📌 ارز: {config['symbol']}\n"
-                f"⏱ تایم‌فریم: {config['timeframe']}\n"
-                f"💰 قیمت: {current_price:.2f}\n"
-                f"🎯 هدف: {recent_low:.2f}\n"
-                f"🛑 حد ضرر: {recent_high * 1.01:.2f}"
-            )
-            print(msg)
-            send_telegram(msg)
+            self.total_signals += 1
+            self.log(f"🔻 SHORT ENTRY at {current_price}")
             self.order = self.sell()
-            self.buy(exectype=bt.Order.Stop, price=recent_high * 1.01, size=1)
-            self.sell(exectype=bt.Order.Limit, price=recent_low, size=1)
+            self.buy(exectype=bt.Order.Stop, price=recent_high * 1.01, size=1)  # SL
+            self.sell(exectype=bt.Order.Limit, price=recent_low, size=1)        # TP
+
+    def stop(self):
+        print("\n==================== گزارش نهایی ====================")
+        print(f"📌 ارز: {config['symbol']}")
+        print(f"⏱ تایم‌فریم: {config['timeframe']}")
+        print(f"📅 بازه: {config['start_date']} → {config['end_date']}")
+        print(f"📊 تعداد سیگنال‌ها: {self.total_signals}")
+        print(f"🛑 تعداد حد ضرر (SL): {self.sl_hits}")
+        print(f"🎯 تعداد حد سود (TP): {self.tp_hits}")
+        print(f"💼 سود/ضرر نهایی: {self.broker.getvalue():.2f}")
+
+        # ارسال گزارش به تلگرام
+        msg = (
+            f"📊 <b>گزارش بکتست</b>\n"
+            f"📌 ارز: {config['symbol']}\n"
+            f"⏱ تایم‌فریم: {config['timeframe']}\n"
+            f"📅 بازه: {config['start_date']} → {config['end_date']}\n"
+            f"🔍 تعداد سیگنال: {self.total_signals}\n"
+            f"🛑 حد ضرر: {self.sl_hits}\n"
+            f"🎯 حد سود: {self.tp_hits}\n"
+            f"💼 سرمایه نهایی: ${self.broker.getvalue():.2f}"
+        )
+        send_telegram(msg)
 
 # --- دریافت داده با بازه زمانی ---
 def fetch_data(symbol, timeframe, start_date, end_date):
