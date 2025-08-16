@@ -1,38 +1,98 @@
 # .github/workflows/backtest.yml
-name: Run Backtest
 
+name: 📊 Crypto Backtest Runner
+
+# 🔔 فعال‌سازی رویدادها
 on:
   push:
-    branches: [ main, develop ]
-  workflow_dispatch:  # امکان اجرا دستی از طریق GitHub
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # امکان اجرای دستی از طریق GitHub
+    inputs:
+      run_reason:
+        description: 'دلیل اجرای دستی'
+        required: false
+        default: "اجرای دستی توسط کاربر"
 
 jobs:
   backtest:
+    name: اجرای بکتست
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHON_VERSION: '3.9'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      # 1️⃣ دریافت کد از مخزن
+      - name: 🔽 دریافت کد (Checkout)
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      # 2️⃣ نصب Python
+      - name: 🐍 نصب Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
 
-      - name: Install dependencies
+      # 3️⃣ نصب وابستگی‌ها
+      - name: 📦 نصب وابستگی‌ها
         run: |
-          pip install --no-cache-dir -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        shell: bash
 
-      - name: Create required directories
+      # 4️⃣ ایجاد دایرکتوری‌های لازم
+      - name: 📁 ایجاد دایرکتوری‌ها
         run: |
           mkdir -p logs data/cache
+          touch logs/strategy.log
+        shell: bash
 
-      - name: Run backtest
-        run: python backtest.py
+      # 5️⃣ ایجاد فایل مخفی تلگرام (از GitHub Secrets)
+      - name: 🔐 ایجاد فایل مخفی تلگرام
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        run: |
+          mkdir -p secrets
+          cat <<EOF > secrets/telegram_secrets.json
+          {
+            "telegram_token": "${{ secrets.TELEGRAM_BOT_TOKEN }}",
+            "chat_id": "${{ secrets.TELEGRAM_CHAT_ID }}"
+          }
+          EOF
+        shell: bash
 
-      - name: Upload logs
-        uses: actions/upload-artifact@v3
+      # 6️⃣ اجرای بکتست
+      - name: ▶️ اجرای بکتست
+        run: |
+          python backtest.py
+        shell: bash
+
+      # 7️⃣ آپلود لاگ‌ها (حتی اگر خطا داشته باشد)
+      - name: 📤 آپلود لاگ‌ها
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: logs
-          path: logs/
+          name: backtest-logs-${{ github.run_id }}
+          path: |
+            logs/
+            *.log
+          retention-days: 7
+
+      # 8️⃣ ارسال نتیجه به تلگرام (اختیاری)
+      - name: 📢 ارسال نتیجه به تلگرام
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        run: |
+          MESSAGE="✅ بکتست اجرا شد\n📌 ریپو: ${{ github.repository }}\n🔢 ID: ${{ github.run_id }}\n🔄 شاخه: ${{ github.ref_name }}\n👤 توسط: ${{ github.actor }}\n📅 زمان: $(date '+%Y-%m-%d %H:%M:%S')"
+          URL="https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage"
+          curl -s -X POST $URL -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} -d text="$MESSAGE" -d parse_mode="HTML"
+
+      # 9️⃣ چک کردن خطا
+      - name: 🧪 بررسی خطاهای احتمالی
+        if: failure()
+        run: |
+          echo "❌ بکتست با خطا مواجه شد. لطفاً لاگ‌ها را بررسی کنید."
