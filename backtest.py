@@ -1,4 +1,9 @@
-# backtest.py (نسخه 2 - با backtrader اما بدون نمودار)
+# backtest.py
+"""
+بکتست ساده برای BTC/USDT با استفاده از KuCoin
+با backtrader و بدون نمودار
+"""
+
 import ccxt
 import pandas as pd
 import backtrader as bt
