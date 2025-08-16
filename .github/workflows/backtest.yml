@@ -1,21 +1,14 @@
 # .github/workflows/backtest.yml
 
-name: 📊 Crypto Backtest Runner (با انتخاب دستی)
+name: 📊 Crypto Backtest Runner (با تاریخ)
 
 on:
   push:
-    branches:
-      - main
-      - develop
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:  # امکان اجرای دستی با تنظیمات کاربر
+    branches: [ main, develop ]
+  workflow_dispatch:
     inputs:
       symbol:
-        description: 'ارز مورد نظر را انتخاب کنید'
-        required: true
-        default: 'BTC/USDT'
+        description: 'ارز مورد نظر'
         type: choice
         options:
           - 'BTC/USDT'
@@ -23,11 +16,10 @@ on:
           - 'SOL/USDT'
           - 'ADA/USDT'
           - 'XRP/USDT'
+        default: 'BTC/USDT'
 
       timeframe:
-        description: 'تایم‌فریم را انتخاب کنید'
-        required: true
-        default: '15m'
+        description: 'تایم‌فریم'
         type: choice
         options:
           - '1m'
@@ -37,71 +29,67 @@ on:
           - '1h'
           - '4h'
           - '1d'
+        default: '15m'
 
-      lookback:
-        description: 'بازه زمانی (تعداد کندل)'
-        required: true
-        default: '100'
-        type: number
+      start_date:
+        description: 'تاریخ شروع (YYYY-MM-DD)'
+        type: string
+        default: '2024-01-01'
+
+      end_date:
+        description: 'تاریخ پایان (YYYY-MM-DD)'
+        type: string
+        default: '2024-06-01'
 
       run_reason:
-        description: 'دلیل اجرای دستی (اختیاری)'
+        description: 'دلیل اجرای دستی'
+        type: string
         required: false
-        default: 'اجرای تستی'
 
 jobs:
   backtest:
-    name: اجرای بکتست - ${{ github.event.inputs.symbol || 'BTC/USDT' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - name: 🔽 دریافت کد
+      - name: 🔽 Checkout
         uses: actions/checkout@v4
 
-      - name: 🐍 نصب Python 3.9
+      - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
-          cache: 'pip'
-          cache-dependency-path: requirements.txt
 
-      - name: 📦 نصب وابستگی‌ها
+      - name: 📦 Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 📁 ایجاد دایرکتوری‌ها
+      - name: 📁 Create directories
         run: |
           mkdir -p logs data/cache config
 
-      # 🔧 ایجاد تنظیمات پویا بر اساس ورودی کاربر
-      - name: 🛠️ تنظیم تنظیمات پویا
+      # 🔧 ایجاد تنظیمات پویا با تاریخ
+      - name: 🛠️ Create dynamic config
         run: |
           cat <<EOF > config/dynamic_settings.json
           {
             "symbols": ["${{ github.event.inputs.symbol }}"],
             "timeframe": "${{ github.event.inputs.timeframe }}",
+            "start_date": "${{ github.event.inputs.start_date }}",
+            "end_date": "${{ github.event.inputs.end_date }}",
             "fib_entry_level": 0.71,
             "fib_tp_level": 0.0,
             "fib_sl_level": 1.0,
-            "lookback": ${{ github.event.inputs.lookback }},
             "enable_telegram": true,
             "debug": true
           }
           EOF
-          echo "✅ تنظیمات ایجاد شد:"
+          echo "✅ Config created:"
           cat config/dynamic_settings.json
 
-      # ✅ جایگزینی تنظیمات در کد
-      - name: 🔄 جایگزینی تنظیمات در backtest.py
-        run: |
-          sed -i 's|config/settings.json|config/dynamic_settings.json|g' backtest.py
-          echo "🔧 تنظیمات به dynamic_settings تغییر کرد."
-
-      # 🔐 ایجاد فایل مخفی تلگرام (اختیاری)
-      - name: 🔐 ایجاد فایل تلگرام
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+      - name: 🔐 Setup Telegram Secrets
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN && secrets.TELEGRAM_CHAT_ID }}
         run: |
           mkdir -p secrets
           cat <<EOF > secrets/telegram_secrets.json
@@ -111,31 +99,13 @@ jobs:
           }
           EOF
 
-      # ▶️ اجرای بکتست
-      - name: ▶️ اجرای بکتست
-        run: |
-          python backtest.py
+      - name: ▶️ Run Backtest
+        run: python backtest.py
 
-      # 📤 آپلود لاگ‌ها
-      - name: 📤 آپلود لاگ‌ها
+      - name: 📤 Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: backtest-logs-${{ github.run_id }}
-          path: |
-            logs/
-            *.log
+          path: logs/
           retention-days: 7
-
-      # 📢 ارسال نتیجه به تلگرام (اختیاری)
-      - name: 📢 ارسال نتیجه به تلگرام
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
-        run: |
-          MESSAGE="🚀 <b>بکتست اجرا شد</b>\n📌 ارز: ${{ github.event.inputs.symbol }}\n⏱ تایم‌فریم: ${{ github.event.inputs.timeframe }}\n🔢 کندل: ${{ github.event.inputs.lookback }}\n🆔 Run ID: ${{ github.run_id }}\n📅 زمان: $(date '+%Y-%m-%d %H:%M:%S')"
-          URL="https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage"
-          curl -s -X POST $URL -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} -d text="$MESSAGE" -d parse_mode="HTML"
-
-      # 🧪 بررسی خطا
-      - name: 🧪 گزارش خطا
-        if: failure()
-        run: echo "❌ اجرای بکتست با خطا مواجه شد. لاگ‌ها را بررسی کنید."
