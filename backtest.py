@@ -64,13 +64,25 @@ def fetch_kucoin_data(symbol, timeframe, start_date, end_date=None):
         })
         exchange.load_markets()
 
-        # بررسی تاریخ‌ها
-        if not start_date or not end_date:
-            logger.error("❌ تاریخ شروع یا پایان خالی است.")
-            return None
+        # بررسی تاریخ‌ها و تنظیم پیش‌فرض
+        start_date = config.get('start_date', '2024-01-01')
+        end_date = config.get('end_date', '2024-06-01')
+
+        # بررسی فرمت تاریخ
+        try:
+            datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            logger.error(f"❌ فرمت تاریخ شروع نادرست است: {start_date}")
+            sys.exit(1)
+
+        try:
+            datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            logger.error(f"❌ فرمت تاریخ پایان نادرست است: {end_date}")
+            sys.exit(1)
 
         since = date_to_milliseconds(start_date)
-        until = date_to_milliseconds(end_date) if end_date else exchange.milliseconds()
+        until = date_to_milliseconds(end_date)
 
         all_bars = []
         limit = 1000  # حداکثر کندل در هر درخواست
@@ -131,7 +143,6 @@ def run_backtest():
                         fib_entry=config['fib_entry_level'],
                         fib_tp=config['fib_tp_level'],
                         fib_sl=config['fib_sl_level'],
-                        enable_telegram=config.get('enable_telegram', True),
                         debug=config.get('debug', True))
 
     cerebro.broker.setcash(10000)
@@ -144,8 +155,8 @@ def run_backtest():
         df = fetch_kucoin_data(
             symbol=symbol,
             timeframe=config['timeframe'],
-            start_date=config.get('start_date', '2024-01-01'),
-            end_date=config.get('end_date', '2024-06-01')
+            start_date=None,  # از config استفاده می‌کند
+            end_date=None
         )
         if df is not None and len(df) > 10:
             data_feed = bt.feeds.PandasData(dataname=df, name=symbol)
