@@ -1,13 +1,33 @@
 # backtest.py
 """
-بکتست ساده برای BTC/USDT با استفاده از KuCoin
-با backtrader و بدون نمودار
+بکتست ساده برای BTC/USDT با ارسال سیگنال به تلگرام
 """
 
 import ccxt
 import pandas as pd
 import backtrader as bt
+import requests
+import os
 
+# --- تابع ارسال به تلگرام ---
+def send_telegram(message):
+    try:
+        token = os.getenv('TELEGRAM_BOT_TOKEN')
+        chat_id = os.getenv('TELEGRAM_CHAT_ID')
+        if not token or not chat_id:
+            print("⚠️ هشدار: توکن یا chat_id تنظیم نشده — ارسال تلگرام ناموفق")
+            return
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            'chat_id': chat_id,
+            'text': message,
+            'parse_mode': 'HTML'
+        }
+        requests.post(url, data=payload, timeout=10)
+    except Exception as e:
+        print(f"❌ خطا در ارسال به تلگرام: {e}")
+
+# --- استراتژی ---
 class SimpleFibStrategy(bt.Strategy):
     def __init__(self):
         self.data_close = self.datas[0].close
@@ -32,10 +52,18 @@ class SimpleFibStrategy(bt.Strategy):
         current_price = self.data_close[0]
 
         if current_price >= fib_71:
-            print(f"🔻 SHORT ENTRY at {current_price}")
+            msg = (
+                f"🔻 <b>سیگنال فروش (SHORT)</b>\n"
+                f"📌 ارز: BTC/USDT\n"
+                f"💰 قیمت ورود: {current_price:.2f}\n"
+                f"🎯 هدف: {recent_low:.2f}\n"
+                f"🛑 حد ضرر: {recent_high * 1.01:.2f}"
+            )
+            print(msg)
+            send_telegram(msg)
             self.order = self.sell()
-            self.buy(exectype=bt.Order.Stop, price=recent_high * 1.01, size=1)  # SL
-            self.sell(exectype=bt.Order.Limit, price=recent_low, size=1)        # TP
+            self.buy(exectype=bt.Order.Stop, price=recent_high * 1.01, size=1)
+            self.sell(exectype=bt.Order.Limit, price=recent_low, size=1)
 
 # --- اجرای بکتست ---
 if __name__ == '__main__':
