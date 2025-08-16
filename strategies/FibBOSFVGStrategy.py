@@ -3,6 +3,8 @@
 استراتژی معاملاتی: Fib 71% + BOS + FVG
 با پشتیبانی از ارسال سیگنال به تلگرام و لاگ‌گیری امن
 """
+
+import os  # ✅ اضافه شد
 import backtrader as bt
 from utils.fib_levels import calculate_fib_levels
 from utils.detect_fvg import detect_fvg
@@ -12,12 +14,12 @@ from utils.logger import setup_logger
 
 class FibBOSFVGStrategy(bt.Strategy):
     params = (
-        ('fib_entry', 0.71),           # سطح ورود فیبوناچی
-        ('fib_tp', 0.0),               # سطح هدف (0.0 = LL)
-        ('fib_sl', 1.0),               # سطح حد ضرر (1.0 = HH)
-        ('lookback', 100),             # تعداد کندل برای محاسبه
-        ('enable_telegram', True),     # فعال‌سازی ارسال سیگنال به تلگرام
-        ('debug', True),               # فعال‌سازی لاگ‌گیری
+        ('fib_entry', 0.71),
+        ('fib_tp', 0.0),
+        ('fib_sl', 1.0),
+        ('lookback', 100),
+        ('enable_telegram', True),
+        ('debug', True),
     )
 
     def __init__(self):
@@ -30,11 +32,9 @@ class FibBOSFVGStrategy(bt.Strategy):
 
         # راه‌اندازی لاگ
         if self.p.debug:
-            # اطمینان از وجود پوشه logs
             log_dir = 'logs'
             os.makedirs(log_dir, exist_ok=True)
 
-            # جایگزینی / با _ در نام فایل (برای جلوگیری از مشکل مسیر)
             safe_symbol = self.datas[0]._name.replace('/', '_')
             log_file = f'{log_dir}/{safe_symbol}.log'
 
@@ -67,11 +67,9 @@ class FibBOSFVGStrategy(bt.Strategy):
         hh = max(recent_highs)
         ll = min(recent_lows)
 
-        # شاخص‌های موقعیت HH و LL
         idx_hh = list(recent_highs).index(hh)
         idx_ll = list(recent_lows).index(ll)
 
-        # فقط اگر HH قبل از LL باشد (روند نزولی)
         if idx_hh < idx_ll:
             fib_levels = calculate_fib_levels(hh, ll)
             entry_price = fib_levels[self.p.fib_entry]
@@ -80,17 +78,14 @@ class FibBOSFVGStrategy(bt.Strategy):
 
             current_price = self.data_close[0]
 
-            # تشخیص FVG
             fvg = detect_fvg(self.data_high, self.data_low, self.data_close)
             if fvg:
                 self.fvg_list.append(fvg)
 
-            # تشخیص BOS
             bos = detect_bos(self.data_high, self.data_low, self.p.lookback)
             if bos:
                 self.bos_list.append(bos)
 
-            # ورود شورت: قیمت در 71%، BOS نزولی، FVG نزولی
             if (abs(current_price - entry_price) / entry_price < 0.001
                     and bos == 'bearish'
                     and fvg and fvg['type'] == 'bearish'):
@@ -98,7 +93,6 @@ class FibBOSFVGStrategy(bt.Strategy):
                 self.log(f"SHORT ENTRY at {current_price}")
                 self.order = self.sell()
 
-                # ارسال سیگنال به تلگرام (اختیاری)
                 if self.p.enable_telegram:
                     try:
                         send_telegram_signal(
@@ -113,6 +107,5 @@ class FibBOSFVGStrategy(bt.Strategy):
                         if self.p.debug:
                             print(f"[TELEGRAM ERROR] {e}")
 
-                # تنظیم حد ضرر و هدف
                 self.buy(exectype=bt.Order.Stop, price=sl_price, size=1)
                 self.sell(exectype=bt.Order.Limit, price=tp_price, size=1)
