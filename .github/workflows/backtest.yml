@@ -1,6 +1,6 @@
 # .github/workflows/backtest.yml
 
-name: 📊 Crypto Backtest Runner (نسخه نهایی و امن)
+name: 📊 Crypto Backtest Runner (نسخه نهایی و کاملاً سازگار)
 
 on:
   push:
@@ -104,7 +104,7 @@ jobs:
 
       # 6️⃣ ایجاد فایل مخفی تلگرام (فقط اگر secrets وجود داشته باشد)
       - name: 🔐 ایجاد فایل تلگرام
-        if: ${{ length(env.TELEGRAM_BOT_TOKEN) > 0 && length(env.TELEGRAM_CHAT_ID) > 0 }}
+        if: ${{ contains(env.TELEGRAM_BOT_TOKEN, 'x') && contains(env.TELEGRAM_CHAT_ID, 'x') }}
         run: |
           mkdir -p secrets
           cat <<EOF > secrets/telegram_secrets.json
@@ -133,7 +133,7 @@ jobs:
 
       # 9️⃣ ارسال نتیجه به تلگرام (فقط اگر secrets وجود داشته باشد)
       - name: 📢 ارسال نتیجه به تلگرام
-        if: ${{ length(env.TELEGRAM_BOT_TOKEN) > 0 && length(env.TELEGRAM_CHAT_ID) > 0 }}
+        if: ${{ contains(env.TELEGRAM_BOT_TOKEN, 'x') && contains(env.TELEGRAM_CHAT_ID, 'x') }}
         run: |
           MESSAGE="🚀 <b>بکتست اجرا شد</b>\n📌 ارز: ${{ inputs.symbol }}\n⏱ تایم‌فریم: ${{ inputs.timeframe }}\n📅 بازه: ${{ inputs.start_date }} → ${{ inputs.end_date }}\n🆔 Run ID: ${{ github.run_id }}\n👤 توسط: ${{ github.actor }}"
           URL="https://api.telegram.org/bot${{ env.TELEGRAM_BOT_TOKEN }}/sendMessage"
