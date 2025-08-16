@@ -1,0 +1,38 @@
+# .github/workflows/backtest.yml
+name: Run Backtest
+
+on:
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:  # امکان اجرا دستی از طریق GitHub
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -r requirements.txt
+
+      - name: Create required directories
+        run: |
+          mkdir -p logs data/cache
+
+      - name: Run backtest
+        run: python backtest.py
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: logs
+          path: logs/
