@@ -68,17 +68,16 @@ def fetch_kucoin_data(symbol, timeframe, start_date, end_date=None):
         start_date = config.get('start_date', '2024-01-01')
         end_date = config.get('end_date', '2024-06-01')
 
+        # تبدیل / به - برای سازگاری
+        start_date = start_date.replace('/', '-')
+        end_date = end_date.replace('/', '-')
+
         # بررسی فرمت تاریخ
         try:
             datetime.strptime(start_date, "%Y-%m-%d")
-        except ValueError:
-            logger.error(f"❌ فرمت تاریخ شروع نادرست است: {start_date}")
-            sys.exit(1)
-
-        try:
             datetime.strptime(end_date, "%Y-%m-%d")
-        except ValueError:
-            logger.error(f"❌ فرمت تاریخ پایان نادرست است: {end_date}")
+        except ValueError as e:
+            logger.error(f"❌ فرمت تاریخ نادرست است: {start_date} یا {end_date}")
             sys.exit(1)
 
         since = date_to_milliseconds(start_date)
