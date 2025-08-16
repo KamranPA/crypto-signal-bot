@@ -1,9 +1,8 @@
 # strategies/FibBOSFVGStrategy.py
 """
 استراتژی معاملاتی: Fib 71% + BOS + FVG
-با پشتیبانی از ارسال سیگنال به تلگرام
+با پشتیبانی از ارسال سیگنال به تلگرام و لاگ‌گیری امن
 """
-
 import backtrader as bt
 from utils.fib_levels import calculate_fib_levels
 from utils.detect_fvg import detect_fvg
@@ -31,9 +30,18 @@ class FibBOSFVGStrategy(bt.Strategy):
 
         # راه‌اندازی لاگ
         if self.p.debug:
+            # اطمینان از وجود پوشه logs
+            log_dir = 'logs'
+            os.makedirs(log_dir, exist_ok=True)
+
+            # جایگزینی / با _ در نام فایل (برای جلوگیری از مشکل مسیر)
+            safe_symbol = self.datas[0]._name.replace('/', '_')
+            log_file = f'{log_dir}/{safe_symbol}.log'
+
             self.log = setup_logger(
-                name=f'strategy_{self.datas[0]._name}',
-                log_file=f'logs/{self.datas[0]._name}.log'
+                name=f'strategy_{safe_symbol}',
+                log_file=log_file,
+                level=logging.INFO
             )
         else:
             self.log = None
@@ -108,12 +116,3 @@ class FibBOSFVGStrategy(bt.Strategy):
                 # تنظیم حد ضرر و هدف
                 self.buy(exectype=bt.Order.Stop, price=sl_price, size=1)
                 self.sell(exectype=bt.Order.Limit, price=tp_price, size=1)
-
-            # ورود لانگ: (اختیاری - در صورت تمایل می‌توانید اضافه کنید)
-            # elif (abs(current_price - entry_price) / entry_price < 0.001
-            #         and bos == 'bullish'
-            #         and fvg and fvg['type'] == 'bullish'):
-            #     self.log(f"LONG ENTRY at {current_price}")
-            #     self.order = self.buy()
-            #     if self.p.enable_telegram:
-            #         send_telegram_signal(...)
