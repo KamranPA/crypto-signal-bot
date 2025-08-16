@@ -9,6 +9,10 @@ import pandas as pd
 import backtrader as bt
 from datetime import datetime
 import pytz
+import matplotlib
+
+# --- تنظیم backend matplotlib ---
+matplotlib.use('Agg')  # ✅ برای محیط headless
 
 # --- دریافت داده از KuCoin ---
 def fetch_data():
