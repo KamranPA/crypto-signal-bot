@@ -1,4 +1,4 @@
-name: 📊 Simple Backtest
+name: 📊 Simple Backtest (No Plot)
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
 
       - name: 📦 Install dependencies
         run: |
-          pip install backtrader ccxt pandas matplotlib
+          pip install ccxt pandas
 
       - name: ▶️ Run backtest
         run: python backtest.py
