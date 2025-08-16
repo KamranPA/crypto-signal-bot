@@ -1,61 +1,54 @@
-# backtest.py
-"""
-بکتست ساده برای BTC/USDT با استفاده از KuCoin
-بدون نمودار، بدون خطا، بدون پیچیدگی
-"""
-
+# backtest.py (نسخه 2 - با backtrader اما بدون نمودار)
 import ccxt
 import pandas as pd
-from datetime import datetime
+import backtrader as bt
 
-# --- دریافت داده از KuCoin ---
-def fetch_data():
-    exchange = ccxt.kucoin({
-        'enableRateLimit': True,
-        'options': {'defaultType': 'spot'}
-    })
-    
-    # دریافت آخرین 100 کندل 15 دقیقه‌ای
+class SimpleFibStrategy(bt.Strategy):
+    def __init__(self):
+        self.data_close = self.datas[0].close
+        self.data_high = self.datas[0].high
+        self.data_low = self.datas[0].low
+        self.order = None
+
+    def next(self):
+        if self.order:
+            return
+        if len(self) < 70:
+            return
+
+        highs = self.data_high.get(-70, 70)
+        lows = self.data_low.get(-70, 70)
+        if len(highs) == 0 or len(lows) == 0:
+            return
+
+        recent_high = max(highs)
+        recent_low = min(lows)
+        fib_71 = recent_low + 0.71 * (recent_high - recent_low)
+        current_price = self.data_close[0]
+
+        if current_price >= fib_71:
+            print(f"🔻 SHORT ENTRY at {current_price}")
+            self.order = self.sell()
+            self.buy(exectype=bt.Order.Stop, price=recent_high * 1.01, size=1)  # SL
+            self.sell(exectype=bt.Order.Limit, price=recent_low, size=1)        # TP
+
+# --- اجرای بکتست ---
+if __name__ == '__main__':
+    # دریافت داده
+    exchange = ccxt.kucoin({'enableRateLimit': True})
     bars = exchange.fetch_ohlcv('BTC/USDT', '15m', limit=100)
     df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    return df
+    df.set_index('timestamp', inplace=True)
 
-# --- محاسبه فیبوناچی و تشخیص ورود ---
-def run_analysis(df):
-    # آخرین 70 کندل
-    recent = df.tail(70)
-    
-    if len(recent) < 70:
-        print("❌ داده کافی برای تحلیل وجود ندارد")
-        return
-    
-    recent_high = recent['high'].max()
-    recent_low = recent['low'].min()
-    current_price = df['close'].iloc[-1]
-    
-    # محاسبه سطوح فیبوناچی
-    diff = recent_high - recent_low
-    fib_71 = recent_low + 0.71 * diff
-    
-    print(f"📊 تحلیل BTC/USDT")
-    print(f"📌 قیمت فعلی: {current_price:.2f}")
-    print(f"📈 بالاترین (70 کندل): {recent_high:.2f}")
-    print(f"📉 پایین‌ترین (70 کندل): {recent_low:.2f}")
-    print(f"🎯 سطح 71% فیبوناچی: {fib_71:.2f}")
-    
-    # سیگنال ورود
-    if current_price >= fib_71:
-        print("🔻 سیگنال: SHORT (فروش)")
-    else:
-        print("🟢 وضعیت: صبر کنید")
+    # تنظیم backtrader
+    cerebro = bt.Cerebro()
+    data_feed = bt.feeds.PandasData(dataname=df)
+    cerebro.adddata(data_feed)
+    cerebro.addstrategy(SimpleFibStrategy)
+    cerebro.broker.setcash(10000)
+    cerebro.broker.setcommission(commission=0.001)
 
-# --- اجرای برنامه ---
-if __name__ == '__main__':
-    print("🔄 در حال دریافت داده از KuCoin...")
-    try:
-        df = fetch_data()
-        print(f"✅ {len(df)} کندل دریافت شد")
-        run_analysis(df)
-    except Exception as e:
-        print(f"❌ خطای ارتباط با صرافی: {e}")
+    print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
+    cerebro.run()
+    print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
