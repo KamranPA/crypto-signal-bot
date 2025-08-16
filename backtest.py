@@ -28,6 +28,8 @@ def fetch_data():
 class SimpleFibStrategy(bt.Strategy):
     def __init__(self):
         self.data_close = self.datas[0].close
+        self.data_high = self.datas[0].high
+        self.data_low = self.datas[0].low
         self.order = None
 
     def next(self):
@@ -38,9 +40,15 @@ class SimpleFibStrategy(bt.Strategy):
         if len(self) < 70:
             return
 
-        # محاسبه HH و LL برای 70 کندل آخر
-        recent_high = max(self.data_high.get(-70, 70))
-        recent_low = min(self.data_low.get(-70, 70))
+        # دریافت داده‌های 70 کندل آخر
+        highs = self.data_high.get(-70, 70)
+        lows = self.data_low.get(-70, 70)
+
+        if len(highs) == 0 or len(lows) == 0:
+            return
+
+        recent_high = max(highs)
+        recent_low = min(lows)
 
         # محاسبه سطوح فیبوناچی
         diff = recent_high - recent_low
