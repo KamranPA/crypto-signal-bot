@@ -1,4 +1,7 @@
-ccxt==4.0.87
-requests==2.31.0
-pandas==2.1.4
+backtrader==1.9.78.123
+ccxt==4.0.89
+pandas==2.1.0
 numpy==1.24.3
+python-telegram-bot==20.7
+matplotlib==3.7.2
+ta==0.10.2
