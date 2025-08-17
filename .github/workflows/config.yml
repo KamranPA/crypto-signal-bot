@@ -2,16 +2,13 @@
 
 settings:
   exchange: kucoin
-  data_source: ohlcv
   limit: 1000
-  output_format: "print, telegram"
 
 timeframe:
   main: "15m"
 
 date_range:
   since: "2024-06-01"
-  until: null  # optional: "2024-07-01"
 
 symbols:
   - "BTC/USDT"
@@ -20,9 +17,7 @@ symbols:
 
 notifications:
   telegram:
-    enabled: true
-    token: "${TELEGRAM_TOKEN}"
-    chat_id: "${TELEGRAM_CHAT_ID}"
+    enabled: true  # فقط فعال/غیرفعال — توکن در .env یا سکرت است
 
 strategy:
   name: "Vortex Volume Flow"
@@ -30,5 +25,3 @@ strategy:
     ema_fast: 8
     ema_slow: 21
     volume_ratio_threshold: 1.5
-    enable_htf_filter: false
-    htf_timeframe: "1h"
