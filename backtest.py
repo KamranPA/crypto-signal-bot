@@ -1,6 +1,7 @@
 # backtest.py
 """
-بکتست با گزارش‌گیری کامل: تعداد سیگنال، SL، TP
+استراتژی معاملاتی صحیح بر اساس:
+- BOS → Pullback → Fib 71% + FVG → ورود در جهت روند
 """
 
 import ccxt
@@ -35,7 +36,23 @@ def date_to_milliseconds(date_str):
 
 # --- ایمپورت توابع ---
 from utils.detect_fvg import detect_fvg
-from utils.detect_bos import detect_bos
+
+# --- تابع یافتن آخرین HL و LL ---
+def find_last_high_low(data, kind='high', lookback=50):
+    """یافتن آخرین سقف (HL) یا کف (LL)"""
+    values = list(data.get(-lookback, lookback))
+    if len(values) < 3:
+        return None, None
+
+    if kind == 'high':
+        for i in range(2, len(values)-2):
+            if values[i] > values[i-1] and values[i] > values[i+1]:
+                return values[i], i
+    else:
+        for i in range(2, len(values)-2):
+            if values[i] < values[i-1] and values[i] < values[i+1]:
+                return values[i], i
+    return None, None
 
 # --- تابع ارسال به تلگرام ---
 def send_telegram(message):
@@ -56,7 +73,7 @@ def send_telegram(message):
     except Exception as e:
         print(f"❌ خطا در ارسال به تلگرام: {e}")
 
-# --- استراتژی با گزارش‌گیری ---
+# --- استراتژی اصلاح‌شده با منطق صحیح ---
 class FibBOSFVGStrategy(bt.Strategy):
     params = (
         ('print_log', True),
@@ -67,7 +84,6 @@ class FibBOSFVGStrategy(bt.Strategy):
         self.data_high = self.datas[0].high
         self.data_low = self.datas[0].low
         self.order = None
-        self.buy_price = None
 
         # متغیرهای گزارش
         self.total_signals = 0
@@ -85,10 +101,8 @@ class FibBOSFVGStrategy(bt.Strategy):
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(f"BUY EXECUTED, Price: {order.executed.price:.2f}")
-                self.buy_price = order.executed.price
             elif order.issell():
                 self.log(f"SELL EXECUTED, Price: {order.executed.price:.2f}")
-                self.buy_price = None
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log('Order Canceled/Margin/Rejected')
@@ -99,54 +113,61 @@ class FibBOSFVGStrategy(bt.Strategy):
         if not trade.isclosed:
             return
 
-        profit = trade.pnlcomm
-        self.log(f"OPERATION PROFIT, GROSS {trade.pnl:.2f}, NET {profit:.2f}")
-
-        # تشخیص نوع بسته شدن
-        if self.buy_price:
-            if trade.exitprice < self.buy_price:
-                self.sl_hits += 1
-                self.log("✅ حد ضرر فعال شد (SL)")
-            else:
-                self.tp_hits += 1
-                self.log("✅ حد سود فعال شد (TP)")
+        if trade.pnlcomm < 0:
+            self.sl_hits += 1
+            self.log("✅ حد ضرر فعال شد (SL)")
         else:
-            if trade.exitprice > self.buy_price:
-                self.sl_hits += 1
-                self.log("✅ حد ضرر فعال شد (SL)")
-            else:
-                self.tp_hits += 1
-                self.log("✅ حد سود فعال شد (TP)")
+            self.tp_hits += 1
+            self.log("✅ حد سود فعال شد (TP)")
 
     def next(self):
         if self.order:
             return
-        if len(self) < 70:
+        if len(self) < 100:
             return
 
-        highs = self.data_high.get(-70, 70)
-        lows = self.data_low.get(-70, 70)
-        if len(highs) == 0 or len(lows) == 0:
+        # 1. تشخیص BOS نزولی (شکست HL)
+        recent_highs = list(self.data_high.get(-50, 50))
+        recent_lows = list(self.data_low.get(-50, 50))
+
+        bos_bearish = False
+        for i in range(-5, -2):
+            if i >= -len(recent_lows): continue
+            if recent_lows[i] > recent_lows[i-1] and recent_lows[i] > recent_lows[i+1]:  # HL
+                if self.data_high[0] < recent_lows[i]:
+                    bos_bearish = True
+                    break
+
+        if not bos_bearish:
             return
 
-        recent_high = max(highs)
-        recent_low = min(lows)
-        fib_71 = recent_low + 0.71 * (recent_high - recent_low)
+        # 2. یافتن آخرین HL و LL برای فیبوناچی
+        hl, _ = find_last_high_low(self.data_high, kind='high', lookback=30)
+        ll, _ = find_last_high_low(self.data_low, kind='low', lookback=30)
+
+        if not hl or not ll:
+            return
+
+        # 3. رسم فیبوناچی از HL به LL
+        diff = hl - ll
+        fib_71 = ll + 0.71 * diff
+        fib_618 = ll + 0.618 * diff
+        fib_886 = ll + 0.886 * diff
+
+        # 4. بررسی FVG نزولی در ناحیه 0.618 تا 0.886
+        fvg = detect_fvg(self.data_high, self.data_low, self.data_close)
+        if not (fvg and fvg['type'] == 'bearish' and fib_618 <= fvg['mid'] <= fib_886):
+            return
+
         current_price = self.data_close[0]
 
-        fvg = detect_fvg(self.data_high, self.data_low, self.data_close)
-        bos = detect_bos(self.data_high, self.data_low, lookback=50)
-
-        # ورود شورت
-        if (current_price >= fib_71
-                and bos == 'bearish'
-                and fvg and fvg['type'] == 'bearish'):
-
+        # 5. ورود در لمس 0.71
+        if abs(current_price - fib_71) / fib_71 < 0.001:
             self.total_signals += 1
             self.log(f"🔻 SHORT ENTRY at {current_price}")
             self.order = self.sell()
-            self.buy(exectype=bt.Order.Stop, price=recent_high * 1.01, size=1)  # SL
-            self.sell(exectype=bt.Order.Limit, price=recent_low, size=1)        # TP
+            self.buy(exectype=bt.Order.Stop, price=hl * 1.01, size=1)  # SL بالاتر از HL
+            self.sell(exectype=bt.Order.Limit, price=ll, size=1)       # TP در LL
 
     def stop(self):
         print("\n==================== گزارش نهایی ====================")
