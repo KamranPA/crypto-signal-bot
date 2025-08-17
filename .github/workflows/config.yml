@@ -1,27 +1,9 @@
 # config.yml
+# فقط مقادیر پیش‌فرض — می‌توانند با آرگومان جایگزین شوند
 
 settings:
-  exchange: kucoin
   limit: 1000
-
-timeframe:
-  main: "15m"
-
-date_range:
-  since: "2024-06-01"
-
-symbols:
-  - "BTC/USDT"
-  - "ETH/USDT"
-  - "SOL/USDT"
 
 notifications:
   telegram:
-    enabled: true  # فقط فعال/غیرفعال — توکن در .env یا سکرت است
-
-strategy:
-  name: "Vortex Volume Flow"
-  parameters:
-    ema_fast: 8
-    ema_slow: 21
-    volume_ratio_threshold: 1.5
+    enabled: true
