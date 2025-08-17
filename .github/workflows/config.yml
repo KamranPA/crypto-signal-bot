@@ -1,0 +1,42 @@
+# config.yml
+
+# تنظیمات کلی سیستم
+settings:
+  exchange: kucoin
+  data_source: ohlcv
+  limit: 1000                     # حداکثر تعداد کندل‌ها
+  output_format: "print, telegram" # نحوه نمایش/ارسال سیگنال
+
+# تنظیمات بازه زمانی و تایم‌فریم
+timeframe:
+  main: "15m"                     # تایم‌فریم اصلی برای تحلیل
+  # می‌توانید بعداً چند تایم‌فریم داشته باشید (مثلاً فیلتر 1H)
+
+# بازه زمانی بک‌تست
+date_range:
+  since: "2024-06-01"             # تاریخ شروع (YYYY-MM-DD)
+  until: "2024-07-01"             # تاریخ پایان (اختیاری — اگر نباشد، تا الان بکشد)
+
+# لیست جفت ارزهای مورد نظر
+symbols:
+  - "BTC/USDT"
+  - "ETH/USDT"
+  - "SOL/USDT"
+  - "XRP/USDT"
+
+# تنظیمات ارسال سیگنال
+notifications:
+  telegram:
+    enabled: true
+    token: "YOUR_TELEGRAM_BOT_TOKEN"   # توکن ربات تلگرام
+    chat_id: "YOUR_CHAT_ID"            # آیدی عددی کاربر یا گروه
+
+# استراتژی معاملاتی
+strategy:
+  name: "Vortex Volume Flow"
+  parameters:
+    ema_fast: 8
+    ema_slow: 21
+    volume_ratio_threshold: 1.5
+    enable_htf_filter: true         # فیلتر روند با تایم‌فریم بالاتر
+    htf_timeframe: "1h"             # تایم‌فریم فیلتر (مثلاً 1H)
