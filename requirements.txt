@@ -1,4 +1,5 @@
 ccxt
 pandas
 numpy
-python-telegram-bot
+PyYAML
+python-decouple
