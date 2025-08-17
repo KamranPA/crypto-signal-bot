@@ -8,59 +8,71 @@ from telegram_bot import send_telegram_message
 
 def load_config(config_file="config.yml"):
     with open(config_file, "r", encoding="utf-8") as file:
-        return yaml.safe_load(file)
+        config = yaml.safe_load(file)
+        
+    # جایگزینی متغیرهای محیطی مثل ${VAR}
+    def resolve_env_vars(data):
+        if isinstance(data, dict):
+            return {k: resolve_env_vars(v) for k, v in data.items()}
+        elif isinstance(data, str) and data.startswith("${") and data.endswith("}"):
+            env_var = data[2:-1]
+            return os.getenv(env_var, data)
+        else:
+            return data
+
+    return resolve_env_vars(config)
 
 def main():
-    parser = argparse.ArgumentParser(description="اجرای سیستم بک‌تست با تنظیمات YML")
-    parser.add_argument("--config", default="config.yml", help="مسیر فایل تنظیمات YML")
+    parser = argparse.ArgumentParser(description="سیستم بک‌تست کریپتو با تنظیمات YML")
+    parser.add_argument("--config", default="config.yml", help="مسیر فایل تنظیمات")
     args = parser.parse_args()
 
     config = load_config(args.config)
-
+    
     settings = config["settings"]
     date_range = config["date_range"]
     symbols = config["symbols"]
     timeframe = config["timeframe"]["main"]
-    notifications = config["notifications"]
+    notifications = config["notifications"]["telegram"]
     strategy = config["strategy"]
 
-    # تبدیل since به timestamp
-    since_str = date_range["since"]
-    since = int(datetime.strptime(since_str, "%Y-%m-%d").timestamp() * 1000)
-    until = date_range.get("until")
+    since = date_range["since"]
+    limit = settings["limit"]
 
-    print(f"🚀 شروع بک‌تست: {since_str} تا {until or 'حال'} | تایم‌فریم: {timeframe}")
+    print(f"🚀 شروع بک‌تست: از {since} | تایم‌فریم: {timeframe}")
+    print(f"📊 ارزها: {', '.join(symbols)}")
 
     all_signals = []
 
     for symbol in symbols:
-        print(f"\n🔍 در حال تحلیل: {symbol}")
         try:
             signals = run_backtest(
                 symbol=symbol,
                 timeframe=timeframe,
-                since=since_str,
-                limit=settings["limit"]
+                since=since,
+                limit=limit
             )
             all_signals.extend(signals)
         except Exception as e:
-            print(f"❌ خطا در تحلیل {symbol}: {e}")
+            print(f"❌ خطا در {symbol}: {e}")
 
-    # ارسال سیگنال‌ها
-    if all_signals and notifications["telegram"]["enabled"]:
+    # ارسال سیگنال‌ها به تلگرام
+    if all_signals and notifications["enabled"]:
         for sig in all_signals:
             msg = (
                 f"🔔 <b>سیگنال خرید</b>\n"
-                f"💰 ارز: {sig['symbol']}\n"
-                f"📊 تایم‌فریم: {sig['timeframe']}\n"
-                f"📌 قیمت: {sig['price']:.2f}\n"
-                f"📅 زمان: {sig['datetime']}\n"
-                f"🔄 استراتژی: {strategy['name']}"
+                f"💰 <b>ارز:</b> {sig['symbol']}\n"
+                f"📊 <b>تایم‌فریم:</b> {sig['timeframe']}\n"
+                f"📌 <b>قیمت:</b> {sig['price']}\n"
+                f"📅 <b>زمان:</b> {sig['datetime']}\n"
+                f"🔄 <b>استراتژی:</b> {strategy['name']}"
             )
             send_telegram_message(msg)
         print(f"✅ {len(all_signals)} سیگنال به تلگرام ارسال شد.")
+    elif all_signals:
+        print(f"📝 {len(all_signals)} سیگنال یافت شد (ارسال غیرفعال).")
     else:
-        print("❌ سیگنالی یافت نشد.")
+        print("❌ هیچ سیگنالی یافت نشد.")
 
 if __name__ == "__main__":
     main()
