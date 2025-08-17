@@ -1,6 +1,6 @@
 # backtest.py
 """
-استراتژی معاملاتی صحیح بر اساس:
+استراتژی معاملاتی دوطرفه بر اساس:
 - BOS → Pullback → Fib 71% + FVG → ورود در جهت روند
 """
 
@@ -44,14 +44,11 @@ def find_last_high_low(data, kind='high', lookback=50):
     if len(values) < 3:
         return None, None
 
-    if kind == 'high':
-        for i in range(2, len(values)-2):
-            if values[i] > values[i-1] and values[i] > values[i+1]:
-                return values[i], i
-    else:
-        for i in range(2, len(values)-2):
-            if values[i] < values[i-1] and values[i] < values[i+1]:
-                return values[i], i
+    for i in range(2, len(values)-2):
+        if kind == 'high' and values[i] > values[i-1] and values[i] > values[i+1]:
+            return values[i], i
+        elif kind == 'low' and values[i] < values[i-1] and values[i] < values[i+1]:
+            return values[i], i
     return None, None
 
 # --- تابع ارسال به تلگرام ---
@@ -73,7 +70,7 @@ def send_telegram(message):
     except Exception as e:
         print(f"❌ خطا در ارسال به تلگرام: {e}")
 
-# --- استراتژی اصلاح‌شده با منطق صحیح ---
+# --- استراتژی دوطرفه ---
 class FibBOSFVGStrategy(bt.Strategy):
     params = (
         ('print_log', True),
@@ -126,48 +123,71 @@ class FibBOSFVGStrategy(bt.Strategy):
         if len(self) < 100:
             return
 
-        # 1. تشخیص BOS نزولی (شکست HL)
-        recent_highs = list(self.data_high.get(-50, 50))
+        # --- 1. تشخیص BOS نزولی (شکست HL) ---
         recent_lows = list(self.data_low.get(-50, 50))
-
         bos_bearish = False
         for i in range(-5, -2):
             if i >= -len(recent_lows): continue
-            if recent_lows[i] > recent_lows[i-1] and recent_lows[i] > recent_lows[i+1]:  # HL
+            # تشخیص HL (Higher Low)
+            if recent_lows[i] > recent_lows[i-1] and recent_lows[i] > recent_lows[i+1]:
                 if self.data_high[0] < recent_lows[i]:
                     bos_bearish = True
                     break
 
-        if not bos_bearish:
-            return
-
-        # 2. یافتن آخرین HL و LL برای فیبوناچی
-        hl, _ = find_last_high_low(self.data_high, kind='high', lookback=30)
-        ll, _ = find_last_high_low(self.data_low, kind='low', lookback=30)
-
-        if not hl or not ll:
-            return
-
-        # 3. رسم فیبوناچی از HL به LL
-        diff = hl - ll
-        fib_71 = ll + 0.71 * diff
-        fib_618 = ll + 0.618 * diff
-        fib_886 = ll + 0.886 * diff
-
-        # 4. بررسی FVG نزولی در ناحیه 0.618 تا 0.886
-        fvg = detect_fvg(self.data_high, self.data_low, self.data_close)
-        if not (fvg and fvg['type'] == 'bearish' and fib_618 <= fvg['mid'] <= fib_886):
-            return
+        # --- 2. تشخیص BOS صعودی (شکست LH) ---
+        recent_highs = list(self.data_high.get(-50, 50))
+        bos_bullish = False
+        for i in range(-5, -2):
+            if i >= -len(recent_highs): continue
+            # تشخیص LH (Lower High)
+            if recent_highs[i] < recent_highs[i-1] and recent_highs[i] < recent_highs[i+1]:
+                if self.data_low[0] > recent_highs[i]:
+                    bos_bullish = True
+                    break
 
         current_price = self.data_close[0]
 
-        # 5. ورود در لمس 0.71
-        if abs(current_price - fib_71) / fib_71 < 0.001:
-            self.total_signals += 1
-            self.log(f"🔻 SHORT ENTRY at {current_price}")
-            self.order = self.sell()
-            self.buy(exectype=bt.Order.Stop, price=hl * 1.01, size=1)  # SL بالاتر از HL
-            self.sell(exectype=bt.Order.Limit, price=ll, size=1)       # TP در LL
+        # --- ورود شورت در روند نزولی ---
+        if bos_bearish:
+            hl, _ = find_last_high_low(self.data_high, kind='high', lookback=30)
+            ll, _ = find_last_high_low(self.data_low, kind='low', lookback=30)
+            if hl and ll and hl > ll:
+                # فیبوناچی از HL به LL
+                diff = hl - ll
+                fib_71 = ll + 0.71 * diff
+                fib_618 = ll + 0.618 * diff
+                fib_886 = ll + 0.886 * diff
+
+                # بررسی FVG نزولی در ناحیه 0.618 تا 0.886
+                fvg = detect_fvg(self.data_high, self.data_low, self.data_close)
+                if fvg and fvg['type'] == 'bearish' and fib_618 <= fvg['mid'] <= fib_886:
+                    if abs(current_price - fib_71) / fib_71 < 0.001:
+                        self.total_signals += 1
+                        self.log(f"🔻 SHORT ENTRY at {current_price}")
+                        self.order = self.sell()
+                        self.buy(exectype=bt.Order.Stop, price=hl * 1.01, size=1)  # SL بالاتر از HL
+                        self.sell(exectype=bt.Order.Limit, price=ll, size=1)       # TP در LL
+
+        # --- ورود لانگ در روند صعودی ---
+        elif bos_bullish:
+            lh, _ = find_last_high_low(self.data_low, kind='low', lookback=30)
+            hh, _ = find_last_high_low(self.data_high, kind='high', lookback=30)
+            if lh and hh and hh > lh:
+                # فیبوناچی از LH به HH
+                diff = hh - lh
+                fib_71 = hh - 0.71 * diff
+                fib_618 = hh - 0.618 * diff
+                fib_886 = hh - 0.886 * diff
+
+                # بررسی FVG صعودی در ناحیه 0.618 تا 0.886
+                fvg = detect_fvg(self.data_high, self.data_low, self.data_close)
+                if fvg and fvg['type'] == 'bullish' and fib_618 <= fvg['mid'] <= fib_886:
+                    if abs(current_price - fib_71) / fib_71 < 0.001:
+                        self.total_signals += 1
+                        self.log(f"🟢 LONG ENTRY at {current_price}")
+                        self.order = self.buy()
+                        self.sell(exectype=bt.Order.Stop, price=lh * 0.99, size=1)  # SL پایین‌تر از LH
+                        self.buy(exectype=bt.Order.Limit, price=hh, size=1)        # TP در HH
 
     def stop(self):
         print("\n==================== گزارش نهایی ====================")
