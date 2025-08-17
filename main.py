@@ -1,78 +1,48 @@
 # main.py
 import argparse
-import yaml
-import os
-from datetime import datetime
 from backtester import run_backtest
 from telegram_bot import send_telegram_message
 
-def load_config(config_file="config.yml"):
-    with open(config_file, "r", encoding="utf-8") as file:
-        config = yaml.safe_load(file)
-        
-    # جایگزینی متغیرهای محیطی مثل ${VAR}
-    def resolve_env_vars(data):
-        if isinstance(data, dict):
-            return {k: resolve_env_vars(v) for k, v in data.items()}
-        elif isinstance(data, str) and data.startswith("${") and data.endswith("}"):
-            env_var = data[2:-1]
-            return os.getenv(env_var, data)
-        else:
-            return data
-
-    return resolve_env_vars(config)
-
 def main():
-    parser = argparse.ArgumentParser(description="سیستم بک‌تست کریپتو با تنظیمات YML")
-    parser.add_argument("--config", default="config.yml", help="مسیر فایل تنظیمات")
+    parser = argparse.ArgumentParser(description="بک‌تست دستی کریپتو با تنظیمات قابل تنظیم")
+
+    # آرگومان‌های دستی
+    parser.add_argument("--symbol", required=True, help="جفت ارز: مثلاً BTC/USDT")
+    parser.add_argument("--timeframe", default="15m", help="تایم‌فریم: 1m, 5m, 15m, 1h")
+    parser.add_argument("--since", required=True, help="تاریخ شروع: YYYY-MM-DD")
+    parser.add_argument("--until", default=None, help="تاریخ پایان: YYYY-MM-DD (اختیاری)")
+    parser.add_argument("--limit", type=int, default=1000, help="حداکثر کندل")
+
     args = parser.parse_args()
 
-    config = load_config(args.config)
-    
-    settings = config["settings"]
-    date_range = config["date_range"]
-    symbols = config["symbols"]
-    timeframe = config["timeframe"]["main"]
-    notifications = config["notifications"]["telegram"]
-    strategy = config["strategy"]
+    print(f"🔍 بک‌تست: {args.symbol} | {args.timeframe} | از {args.since} تا {args.until or 'آخر'}")
 
-    since = date_range["since"]
-    limit = settings["limit"]
+    try:
+        signals = run_backtest(
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            since=args.since,
+            until=args.until,
+            limit=args.limit
+        )
 
-    print(f"🚀 شروع بک‌تست: از {since} | تایم‌فریم: {timeframe}")
-    print(f"📊 ارزها: {', '.join(symbols)}")
+        if signals:
+            for sig in signals:
+                msg = (
+                    f"🔔 <b>سیگنال خرید</b>\n"
+                    f"💰 ارز: {sig['symbol']}\n"
+                    f"📊 تایم‌فریم: {sig['timeframe']}\n"
+                    f"📌 قیمت: {sig['price']}\n"
+                    f"📅 زمان: {sig['datetime']}"
+                )
+                print(f"✅ سیگنال: {sig['symbol']} در {sig['datetime']} — {sig['price']}")
+                send_telegram_message(msg)
+            print(f"📤 {len(signals)} سیگنال به تلگرام ارسال شد.")
+        else:
+            print("❌ سیگنالی یافت نشد.")
 
-    all_signals = []
-
-    for symbol in symbols:
-        try:
-            signals = run_backtest(
-                symbol=symbol,
-                timeframe=timeframe,
-                since=since,
-                limit=limit
-            )
-            all_signals.extend(signals)
-        except Exception as e:
-            print(f"❌ خطا در {symbol}: {e}")
-
-    # ارسال سیگنال‌ها به تلگرام
-    if all_signals and notifications["enabled"]:
-        for sig in all_signals:
-            msg = (
-                f"🔔 <b>سیگنال خرید</b>\n"
-                f"💰 <b>ارز:</b> {sig['symbol']}\n"
-                f"📊 <b>تایم‌فریم:</b> {sig['timeframe']}\n"
-                f"📌 <b>قیمت:</b> {sig['price']}\n"
-                f"📅 <b>زمان:</b> {sig['datetime']}\n"
-                f"🔄 <b>استراتژی:</b> {strategy['name']}"
-            )
-            send_telegram_message(msg)
-        print(f"✅ {len(all_signals)} سیگنال به تلگرام ارسال شد.")
-    elif all_signals:
-        print(f"📝 {len(all_signals)} سیگنال یافت شد (ارسال غیرفعال).")
-    else:
-        print("❌ هیچ سیگنالی یافت نشد.")
+    except Exception as e:
+        print(f"❌ خطای سیستم: {e}")
 
 if __name__ == "__main__":
     main()
