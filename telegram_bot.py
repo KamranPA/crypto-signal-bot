@@ -1,15 +1,30 @@
 # telegram_bot.py
 import requests
-from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+import os
 
 def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    # خواندن توکن و چت آیدی از محیط یا متغیرهای سیستم
+    token = os.getenv("TELEGRAM_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    
+    if not token or not chat_id:
+        print("⚠️ توکن یا چت آیدی تلگرام تنظیم نشده است.")
+        return False
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
+        "chat_id": chat_id,
         "text": message,
         "parse_mode": "HTML"
     }
+    
     try:
-        requests.post(url, data=payload)
+        response = requests.post(url, data=payload)
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"❌ ارسال ناموفق: {response.text}")
+            return False
     except Exception as e:
-        print(f"خطا در ارسال پیام: {e}")
+        print(f"❌ خطای ارسال تلگرام: {e}")
+        return False
