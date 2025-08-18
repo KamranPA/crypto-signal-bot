@@ -1,9 +1,9 @@
+import numpy as np  # ← ضروری برای np.argmax و ...
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
-import numpy as np
 
 def prepare_data_for_xgboost(df, feature_cols):
     X = df[feature_cols]
