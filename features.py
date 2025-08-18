@@ -31,13 +31,13 @@ def add_features(df):
     # Price Change (5 candles ago)
     df['price_change_5'] = df['close'].pct_change(5)
 
-    # Target: آیا قیمت در 3 کندل آینده +1% یا -1% حرکت می‌کند؟
+    # Target: +1%, -1% در 3 کندل آینده
     df['target_up'] = (df['close'].shift(-3) >= df['close'] * 1.01).astype(int)
     df['target_down'] = (df['close'].shift(-3) <= df['close'] * 0.99).astype(int)
     df['target'] = np.where(df['target_up'] == 1, 1,
                    np.where(df['target_down'] == 1, -1, 0))
 
-    # تبدیل کلاس‌ها به [0, 1, 2]
+    # 🔁 تبدیل کلاس‌های -1,0,1 به 0,1,2
     df['target'] = df['target'].map({-1: 0, 0: 1, 1: 2})
 
     return df.dropna()
