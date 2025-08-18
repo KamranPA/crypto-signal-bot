@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import numpy as np
 from data_fetcher import fetch_kucoin
 from features import add_features
 from backtester import Backtester
@@ -12,7 +13,7 @@ def main():
     start_date = os.getenv("INPUT_START_DATE")
     end_date = os.getenv("INPUT_END_DATE")
 
-    # توکن و چت آی‌دی از محیط (secrets) می‌آیند
+    # دریافت توکن و چت آی‌دی از محیط (GitHub Secrets)
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -23,7 +24,7 @@ def main():
     try:
         pd.to_datetime(start_date)
         pd.to_datetime(end_date)
-    except:
+    except Exception as e:
         print('❌ فرمت تاریخ نامعتبر است. فرمت صحیح: YYYY-MM-DD')
         return
 
@@ -63,7 +64,7 @@ def main():
         send_telegram_report(results, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
         print('✅ بک‌تست کامل شد و گزارش ارسال شد.')
     elif results:
-        print('✅ بک‌تست کامل شد، اما ارسال تلگرام غیرفعال است (توکن/چت آی‌دی ندارید)')
+        print('✅ بک‌تست کامل شد، اما ارسال تلگرام غیرفعال است (توکن یا چت آی‌دی ندارید)')
     else:
         print('❌ هیچ بک‌تستی انجام نشد.')
 
