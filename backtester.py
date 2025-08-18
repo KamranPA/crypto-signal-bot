@@ -1,6 +1,5 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from models import *
+from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
 from risk import dynamic_stop_loss
 
 class Backtester:
@@ -30,21 +29,25 @@ class Backtester:
         if len(X_train_lstm) > 0 and len(X_test_lstm) > 0:
             lstm_model = train_lstm(X_train_lstm, y_train_lstm, (X_train_lstm.shape[1], X_train_lstm.shape[2]))
             lstm_pred = lstm_model.predict(X_test_lstm)
-            lstm_pred_classes = np.argmax(lstm_pred, axis=1) - 1  # 0,1,2 → -1,0,1
+            lstm_pred_classes = np.argmax(lstm_pred, axis=1)  # مستقیماً 0,1,2
         else:
-            lstm_pred_classes = [0] * len(y_test)
+            lstm_pred_classes = [1] * len(y_test)  # خنثی
 
         # ترکیب سیگنال (70% ML + 30% TA)
         test_df = self.df.iloc[split_idx:].copy()
         test_df['xgb_pred'] = xgb_pred
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
         test_df['ml_avg'] = (test_df['xgb_pred'] + test_df['lstm_pred']) / 2
-        test_df['sentiment'] = get_sentiment_score()  # ثابت برای همه (در عمل تغییر می‌کند)
+
+        # تبدیل 0,1,2 به -1,0,1 برای تحلیل
+        class_to_signal = {0: -1, 1: 0, 2: 1}
+        test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
+        test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
         # فیلتر تکنیکال
         signals = []
         for i, row in test_df.iterrows():
-            ml_signal = 1 if row['ml_avg'] > 0.3 else (-1 if row['ml_avg'] < -0.3 else 0)
+            ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
             ta_signal = 0
             if row['rsi'] < 30 and row['macd_hist'] > 0:
                 ta_signal = 1
@@ -56,19 +59,22 @@ class Backtester:
 
         test_df['signal'] = signals
 
+        # معکوس کردن target برای محاسبه win_rate
+        target_to_signal = {0: -1, 1: 0, 2: 1}
+        test_df['actual'] = test_df['target'].map(target_to_signal)
+        win_rate = (test_df['signal'] == test_df['actual']).mean()
+
         # محاسبه معیارها
-        win_rate = (test_df['signal'] == test_df['target']).mean()
         sharpe = (test_df['close'].pct_change().mean() * 252) / (test_df['close'].pct_change().std() * np.sqrt(252))
         max_drawdown = (test_df['close'] / test_df['close'].cummax() - 1).min()
 
-        self.results = {
+        result = {
             "symbol": self.symbol,
             "win_rate": win_rate,
             "sharpe": sharpe,
             "max_drawdown": max_drawdown,
             "total_trades": len(test_df),
-            "positive_trades": (test_df['signal'] == test_df['target']).sum(),
-            "negative_trades": (test_df['signal'] != test_df['target']).sum(),
+            "positive_trades": (test_df['signal'] == test_df['actual']).sum(),
             "last_signal": signals[-1]
         }
-        return self.results
+        return result
