@@ -1,11 +1,15 @@
+# backtester.py
+
 import pandas as pd
 import numpy as np
 from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
+from risk import dynamic_stop_loss, position_size, calculate_risk_reward_ratio
 
 class Backtester:
-    def __init__(self, symbol, df):
+    def __init__(self, symbol, df, capital=10000):
         self.symbol = symbol
         self.df = df
+        self.capital = capital
         self.results = []
 
     def run(self):
@@ -14,6 +18,7 @@ class Backtester:
         X = self.df[feature_cols]
         y = self.df['target']
 
+        # تقسیم داده: 80% آموزش، 20% تست
         split_idx = int(len(X) * (1 - 0.2))
         X_train, X_test = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
@@ -31,8 +36,9 @@ class Backtester:
             lstm_pred = lstm_model.predict(X_test_lstm)
             lstm_pred_classes = np.argmax(lstm_pred, axis=1)
         else:
-            lstm_pred_classes = [1] * len(y_test)
+            lstm_pred_classes = [1] * len(y_test)  # خنثی
 
+        # داده تست
         test_df = self.df.iloc[split_idx:].copy()
         test_df['xgb_pred'] = xgb_pred
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
@@ -72,7 +78,7 @@ class Backtester:
         test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
         test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
 
-        # معیارها
+        # معیارهای ارزیابی
         win_rate = (test_df['signal'] == test_df['actual']).mean()
         total_return = (test_df['strategy_return'] + 1).prod() - 1
         sharpe = test_df['strategy_return'].mean() / (test_df['strategy_return'].std() + 1e-8) * np.sqrt(252)
@@ -86,6 +92,15 @@ class Backtester:
         avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
         reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
 
+        # حجم معامله و مدیریت ریسک (نمونه)
+        example_row = test_df.iloc[-1]
+        direction = "long" if signals[-1] == 1 else "short"
+        sl, tp = dynamic_stop_loss(example_row['close'], example_row['atr'], direction)
+        sl_distance = abs(example_row['close'] - sl)
+        tp_distance = abs(example_row['close'] - tp)
+        size = position_size(self.capital, stop_loss_distance=sl_distance, price=example_row['close'])
+        rr_ratio = calculate_risk_reward_ratio(sl_distance, tp_distance)
+
         result = {
             "symbol": self.symbol,
             "win_rate": win_rate,
@@ -95,6 +110,8 @@ class Backtester:
             "avg_win": avg_win,
             "avg_loss": avg_loss,
             "reward_risk_ratio": reward_risk_ratio,
+            "risk_reward_target": rr_ratio,
+            "position_size": size,
             "total_trades": len(test_df),
             "positive_trades": (test_df['signal'] == test_df['actual']).sum(),
             "last_signal": signals[-1]
