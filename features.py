@@ -37,4 +37,7 @@ def add_features(df):
     df['target'] = np.where(df['target_up'] == 1, 1,
                    np.where(df['target_down'] == 1, -1, 0))
 
+    # تبدیل کلاس‌ها به [0, 1, 2]
+    df['target'] = df['target'].map({-1: 0, 0: 1, 1: 2})
+
     return df.dropna()
