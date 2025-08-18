@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np  # ← اضافه شد!
 from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
 
 class Backtester:
@@ -55,7 +56,7 @@ class Backtester:
                 ta_signal = -1
 
             final_signal = 0.7 * ml_signal + 0.3 * ta_signal
-            signals.append(np.sign(final_signal))
+            signals.append(np.sign(final_signal))  # ← np اکنون تعریف شده
 
         test_df['signal'] = signals
 
@@ -77,4 +78,4 @@ class Backtester:
             "positive_trades": (test_df['signal'] == test_df['actual']).sum(),
             "last_signal": signals[-1]
         }
-        return result
+        return resultع
