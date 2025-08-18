@@ -6,10 +6,15 @@ from backtester import Backtester
 from telegram_bot import send_telegram_report
 
 def main():
+    # دریافت ورودی‌ها از محیط (GitHub Secrets)
     symbol_input = os.getenv("INPUT_SYMBOL", "BTC-USDT")
     timeframe = os.getenv("INPUT_TIMEFRAME", "15min")
     start_date = os.getenv("INPUT_START_DATE")
     end_date = os.getenv("INPUT_END_DATE")
+
+    # توکن و چت آی‌دی از محیط (secrets) می‌آیند
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
     if not start_date or not end_date:
         print('❌ لطفاً تاریخ شروع و پایان را وارد کنید.')
@@ -53,9 +58,12 @@ def main():
         result = backtester.run()
         results.append(result)
 
-    if results:
-        send_telegram_report(results)
+    # ارسال به تلگرام فقط اگر توکن و چت آی‌دی وجود داشته باشد
+    if results and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+        send_telegram_report(results, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
         print('✅ بک‌تست کامل شد و گزارش ارسال شد.')
+    elif results:
+        print('✅ بک‌تست کامل شد، اما ارسال تلگرام غیرفعال است (توکن/چت آی‌دی ندارید)')
     else:
         print('❌ هیچ بک‌تستی انجام نشد.')
 
