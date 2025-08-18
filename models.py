@@ -19,4 +19,31 @@ def train_xgboost(X_train, y_train):
 
 def prepare_data_for_lstm(df, feature_cols, lookback=50):
     if 'target' not in df.columns:
-        print("❌ ستون 'target
+        print('❌ ستون "target" وجود ندارد. LSTM اجرا نمی‌شود.')
+        return np.array([]), np.array([])
+
+    X, y = [], []
+    data = df[feature_cols].values
+    target = df['target'].values
+
+    for i in range(lookback, len(data)):
+        X.append(data[i-lookback:i])
+        y.append(target[i])
+    return np.array(X), np.array(y)
+
+def train_lstm(X_train, y_train, input_shape):
+    model = Sequential([
+        LSTM(50, return_sequences=True, input_shape=input_shape),
+        Dropout(0.2),
+        LSTM(50, return_sequences=False),
+        Dropout(0.2),
+        Dense(25),
+        Dense(3, activation='softmax')
+    ])
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    model.fit(X_train, y_train, epochs=10, batch_size=32, verbose=0)
+    return model
+
+def get_sentiment_score():
+    import random
+    return random.uniform(-1, 1)
