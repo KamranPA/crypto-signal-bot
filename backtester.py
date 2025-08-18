@@ -9,14 +9,11 @@ class Backtester:
         self.results = []
 
     def run(self):
-        # ویژگی‌های مورد استفاده
         feature_cols = ['rsi', 'macd', 'macd_signal', 'macd_hist', 'bb_upper', 'bb_lower',
                         'atr', 'volume_change', 'price_change_5', 'close', 'high', 'low', 'open']
-        
         X = self.df[feature_cols]
         y = self.df['target']
 
-        # تقسیم داده: 80% آموزش، 20% تست
         split_idx = int(len(X) * (1 - 0.2))
         X_train, X_test = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
@@ -34,9 +31,8 @@ class Backtester:
             lstm_pred = lstm_model.predict(X_test_lstm)
             lstm_pred_classes = np.argmax(lstm_pred, axis=1)
         else:
-            lstm_pred_classes = [1] * len(y_test)  # خنثی
+            lstm_pred_classes = [1] * len(y_test)
 
-        # داده تست
         test_df = self.df.iloc[split_idx:].copy()
         test_df['xgb_pred'] = xgb_pred
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
@@ -47,8 +43,8 @@ class Backtester:
         test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
         test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
-        # اضافه کردن ستون‌های کمکی
-        test_df['macd_hist_diff'] = test_df['macd_hist'].diff()  # برای تشخیص صعودی/نزولی
+        # افزودن ستون‌های کمکی
+        test_df['macd_hist_diff'] = test_df['macd_hist'].diff().fillna(0)
         test_df['bb_upper_touch'] = test_df['close'] >= test_df['bb_upper']
 
         # فیلتر تکنیکال
@@ -57,11 +53,8 @@ class Backtester:
             ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
             ta_signal = 0
 
-            # فیلتر خرید: RSI > 30 + MACD صعودی
             if row['rsi'] > 30 and row['rsi'] < 70 and row['macd_hist'] > 0 and row['macd_hist_diff'] > 0:
                 ta_signal = 1
-
-            # فیلتر فروش: RSI < 70 + لمس Bollinger بالا
             elif row['rsi'] < 70 and row['bb_upper_touch']:
                 ta_signal = -1
 
@@ -70,19 +63,21 @@ class Backtester:
 
         test_df['signal'] = signals
 
-        # معکوس کردن target برای مقایسه
+        # معکوس کردن target
         target_to_signal = {0: -1, 1: 0, 2: 1}
         test_df['actual'] = test_df['target'].map(target_to_signal)
 
         # محاسبه بازده
-        test_df['return'] = test_df['close'].pct_change().shift(-1)  # بازده کندل بعدی
+        test_df['return'] = test_df['close'].pct_change().shift(-1)
         test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
+        test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
 
-        # معیارهای ارزیابی
+        # معیارها
         win_rate = (test_df['signal'] == test_df['actual']).mean()
         total_return = (test_df['strategy_return'] + 1).prod() - 1
-        sharpe = test_df['strategy_return'].mean() / test_df['strategy_return'].std() * np.sqrt(252) if test_df['strategy_return'].std() != 0 else 0
-        max_drawdown = (test_df['strategy_return'].cumsum() + 1).cummin().iloc[-1] - 1
+        sharpe = test_df['strategy_return'].mean() / (test_df['strategy_return'].std() + 1e-8) * np.sqrt(252)
+        cumulative = (test_df['strategy_return'] + 1).cumprod()
+        max_drawdown = (cumulative / cumulative.cummax() - 1).min()
 
         # میانگین سود و ضرر
         wins = test_df[test_df['strategy_return'] > 0]['strategy_return']
@@ -91,7 +86,6 @@ class Backtester:
         avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
         reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
 
-        # نتیجه نهایی
         result = {
             "symbol": self.symbol,
             "win_rate": win_rate,
