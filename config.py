@@ -1,19 +1,17 @@
 # تنظیمات کلی
 SYMBOLS = ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
 TIMEFRAME = "15min"
-CANDLES_LIMIT = 500  # برای بک‌تست و آموزش
-TEST_SIZE = 0.2       # 20% داده برای تست
+CANDLES_LIMIT = 500
 
 # مدل‌ها
-LSTM_LOOKBACK = 50     # تعداد کندل برای ورودی LSTM
+LSTM_LOOKBACK = 50
 XGBOOST_N_ESTIMATORS = 100
 
 # مدیریت ریسک
-RISK_REWARD_RATIO = 2   # حد سود = 2 × حد ضرر
-ATR_MULTIPLIER_SL = 1.5 # حد ضرر = 1.5 × ATR
+RISK_REWARD_RATIO = 2
+ATR_MULTIPLIER_SL = 1.5
 INITIAL_CAPITAL = 10000
 
-# تلگرام (اختیاری)
-TELEGRAM_TOKEN = ""  # ← اگر دارید، پر کنید
-TELEGRAM_CHAT_ID = ""
-SEND_TELEGRAM = bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
+# تلگرام — فقط برای تعیین فعال بودن ارسال
+# توکن و چت آی‌دی از محیط (secrets) می‌آید
+SEND_TELEGRAM = True  # فقط اگر secrets تنظیم شود، ارسال می‌شود
