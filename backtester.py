@@ -78,4 +78,4 @@ class Backtester:
             "positive_trades": (test_df['signal'] == test_df['actual']).sum(),
             "last_signal": signals[-1]
         }
-        return resultع
+        return result
