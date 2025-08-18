@@ -7,13 +7,10 @@ from backtester import Backtester
 from telegram_bot import send_telegram_report
 
 def main():
-    # دریافت ورودی‌ها از محیط (GitHub Secrets)
     symbol_input = os.getenv("INPUT_SYMBOL", "BTC-USDT")
     timeframe = os.getenv("INPUT_TIMEFRAME", "15min")
     start_date = os.getenv("INPUT_START_DATE")
     end_date = os.getenv("INPUT_END_DATE")
-
-    # دریافت توکن و چت آی‌دی از محیط (GitHub Secrets)
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -24,7 +21,7 @@ def main():
     try:
         pd.to_datetime(start_date)
         pd.to_datetime(end_date)
-    except Exception as e:
+    except:
         print('❌ فرمت تاریخ نامعتبر است. فرمت صحیح: YYYY-MM-DD')
         return
 
@@ -40,12 +37,7 @@ def main():
     results = []
     for symbol in symbols:
         print(f'📥 دریافت داده: {symbol}')
-        df = fetch_kucoin(
-            symbol=symbol,
-            timeframe=timeframe,
-            start_date=start_date,
-            end_date=end_date
-        )
+        df = fetch_kucoin(symbol, timeframe, start_date, end_date)
         if df is None or len(df) < 50:
             print(f'⚠️ داده کافی برای {symbol} وجود ندارد.')
             continue
@@ -59,7 +51,6 @@ def main():
         result = backtester.run()
         results.append(result)
 
-    # ارسال به تلگرام فقط اگر توکن و چت آی‌دی وجود داشته باشد
     if results and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
         send_telegram_report(results, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
         print('✅ بک‌تست کامل شد و گزارش ارسال شد.')
