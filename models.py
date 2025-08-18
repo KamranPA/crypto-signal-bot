@@ -1,4 +1,4 @@
-import numpy as np  # ← ضروری برای np.argmax و ...
+import numpy as np
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
@@ -21,11 +21,9 @@ def prepare_data_for_lstm(df, feature_cols, lookback=50):
     if 'target' not in df.columns:
         print('❌ ستون "target" وجود ندارد. LSTM اجرا نمی‌شود.')
         return np.array([]), np.array([])
-
     X, y = [], []
     data = df[feature_cols].values
     target = df['target'].values
-
     for i in range(lookback, len(data)):
         X.append(data[i-lookback:i])
         y.append(target[i])
@@ -43,7 +41,3 @@ def train_lstm(X_train, y_train, input_shape):
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     model.fit(X_train, y_train, epochs=10, batch_size=32, verbose=0)
     return model
-
-def get_sentiment_score():
-    import random
-    return random.uniform(-1, 1)
