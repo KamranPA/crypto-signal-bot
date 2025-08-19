@@ -49,7 +49,7 @@ class Backtester:
         test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
         test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
-        # محاسبه میانگین‌ها و اندیکاتورها در سطح داده (نه سطری)
+        # محاسبه میانگین‌ها و اندیکاتورها
         test_df['volume_ma20'] = test_df['volume'].rolling(20).mean()
         test_df['ma50'] = test_df['close'].rolling(50).mean()
         test_df['macd_hist_diff'] = test_df['macd_hist'].diff().fillna(0)
@@ -60,37 +60,31 @@ class Backtester:
         # فیلتر سیگنال‌ها
         signals = []
         for i, row in test_df.iterrows():
-            # فیلتر ۱: روند صعودی (بالاتر از MA50 و BB Middle)
-            if row['close'] < max(row['ma50'], row['bb_middle']):
-                signals.append(0)
-                continue
+            final_signal = 0
 
-            # فیلتر ۲: حجم بالا (بالاتر از میانگین 20)
-            if row['volume'] < row['volume_ma20']:
-                signals.append(0)
-                continue
+            # فیلتر ۱: روند صعودی (فقط اگر قیمت خیلی پایین نباشد)
+            if row['close'] < row['ma50'] * 0.95:  # فقط اگر خیلی پایین باشد، فیلتر شود
+                pass  # هنوز سیگنال معتبر است
+            else:
+                # فیلتر ۲: حجم معاملات (حداقل 50% از میانگین)
+                if row['volume'] >= row['volume_ma20'] * 0.5:
+                    # فیلتر ۳: سیگنال تکنیکال
+                    ta_signal = 0
+                    if (row['rsi'] > 35 and row['rsi'] < 65 and
+                        row['macd_hist'] > 0 and row['macd_hist_diff'] > 0 and
+                        row['close'] < row['bb_upper']):
+                        ta_signal = 1
+                    elif (row['rsi'] < 65 and row['rsi'] > 35 and
+                          row['macd_hist'] < 0 and row['close'] >= row['bb_upper']):
+                        ta_signal = -1
 
-            # فیلتر ۳: سیگنال تکنیکال
-            ta_signal = 0
-            if (row['rsi'] > 35 and row['rsi'] < 65 and
-                row['macd_hist'] > 0 and row['macd_hist_diff'] > 0 and
-                row['close'] < row['bb_upper']):
-                ta_signal = 1
-            elif (row['rsi'] < 65 and row['rsi'] > 35 and
-                  row['macd_hist'] < 0 and row['close'] >= row['bb_upper']):
-                ta_signal = -1
+                    if ta_signal != 0:
+                        # فیلتر ۴: اطمینان مدل (حداقل 1.0)
+                        ml_confidence = abs(row['ml_avg'] - 1) if ta_signal == 1 else abs(row['ml_avg'] + 1)
+                        if ml_confidence >= 1.0:  # از 1.3 به 1.0 کاهش یافت
+                            final_signal = ta_signal
 
-            if ta_signal == 0:
-                signals.append(0)
-                continue
-
-            # فیلتر ۴: اطمینان مدل (فقط سیگنال‌های قوی)
-            ml_confidence = abs(row['ml_avg'] - 1) if ta_signal == 1 else abs(row['ml_avg'] + 1)
-            if ml_confidence < 1.3:  # حداقل اطمینان
-                signals.append(0)
-                continue
-
-            signals.append(ta_signal)
+            signals.append(final_signal)
 
         test_df['signal'] = signals
 
@@ -99,25 +93,33 @@ class Backtester:
         test_df['actual'] = test_df['target'].map(target_to_signal)
 
         # محاسبه بازده
-        test_df['return'] = test_df['close'].pct_change().shift(-1)  # بازده کندل بعدی
+        test_df['return'] = test_df['close'].pct_change().shift(-1)
         test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
         test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
 
         # معیارهای ارزیابی
-        win_rate = (test_df['signal'] == test_df['actual']).mean()
-        total_return = (test_df['strategy_return'] + 1).prod() - 1
-        sharpe = test_df['strategy_return'].mean() / (test_df['strategy_return'].std() + 1e-8) * np.sqrt(252)
-        cumulative = (test_df['strategy_return'] + 1).cumprod()
-        max_drawdown = (cumulative / cumulative.cummax() - 1).min()
+        valid_trades = test_df[test_df['signal'] != 0]
+        if len(valid_trades) == 0:
+            win_rate = 0.0
+            total_return = 0.0
+            sharpe = 0.0
+            max_drawdown = 0.0
+            avg_win = 0.0
+            avg_loss = 0.0
+            reward_risk_ratio = float('inf')
+        else:
+            win_rate = (valid_trades['signal'] == valid_trades['actual']).mean()
+            total_return = (test_df['strategy_return'] + 1).prod() - 1
+            sharpe = test_df['strategy_return'].mean() / (test_df['strategy_return'].std() + 1e-8) * np.sqrt(252)
+            cumulative = (test_df['strategy_return'] + 1).cumprod()
+            max_drawdown = (cumulative / cumulative.cummax() - 1).min()
 
-        # میانگین سود و ضرر
-        wins = test_df[test_df['strategy_return'] > 0]['strategy_return']
-        losses = test_df[test_df['strategy_return'] < 0]['strategy_return']
-        avg_win = wins.mean() if len(wins) > 0 else 0
-        avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
-        reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
+            wins = valid_trades[valid_trades['strategy_return'] > 0]['strategy_return']
+            losses = valid_trades[valid_trades['strategy_return'] < 0]['strategy_return']
+            avg_win = wins.mean() if len(wins) > 0 else 0
+            avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
+            reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
 
-        # نتیجه نهایی
         result = {
             "symbol": self.symbol,
             "win_rate": win_rate,
@@ -127,8 +129,8 @@ class Backtester:
             "avg_win": avg_win,
             "avg_loss": avg_loss,
             "reward_risk_ratio": reward_risk_ratio,
-            "total_trades": len(test_df[test_df['signal'] != 0]),
-            "positive_trades": (test_df['signal'] == test_df['actual']).sum(),
+            "total_trades": len(valid_trades),
+            "positive_trades": (valid_trades['signal'] == valid_trades['actual']).sum(),
             "last_signal": signals[-1] if len(signals) > 0 else 0
         }
         return result
