@@ -1,3 +1,5 @@
+# features.py — نسخه اصلاح‌شده (هدف تکنیکال)
+
 import pandas as pd
 import numpy as np
 import ta
@@ -31,15 +33,23 @@ def add_features(df):
     # Price Change (5 candles ago)
     df['price_change_5'] = df['close'].pct_change(5)
 
-    # Target: +1%, -1% در 3 کندل آینده
-    df['target_up'] = (df['close'].shift(-3) >= df['close'] * 1.01).astype(int)
-    df['target_down'] = (df['close'].shift(-3) <= df['close'] * 0.99).astype(int)
-    
-    # تعادل کلاس‌ها: 0 = نزولی، 1 = خنثی، 2 = صعودی
-    df['target'] = np.where(df['target_up'] == 1, 2,
-                   np.where(df['target_down'] == 1, 0, 1))
+    # 🎯 هدف جدید: سیگنال تکنیکال (نه حرکت قیمت)
+    buy_signal = (
+        (df['rsi'] > 30) & (df['rsi'] < 60) &
+        (df['macd_hist'] > 0) & (df['macd_hist'] > df['macd_hist'].shift(1)) &
+        (df['close'] < df['bb_upper'])
+    )
+    sell_signal = (
+        (df['rsi'] > 60) & (df['rsi'] < 70) &
+        (df['macd_hist'] < 0) &
+        (df['close'] >= df['bb_upper'])
+    )
 
-    # دیباگ: چاپ توزیع target
-    print("📊 توزیع target:", df['target'].value_counts().to_dict())
+    # 🎯 تبدیل به target: 2=خرید، 0=فروش، 1=هیچکدام
+    df['target'] = np.where(buy_signal, 2,
+                   np.where(sell_signal, 0, 1))
+
+    # دیباگ
+    print("📊 توزیع target جدید:", df['target'].value_counts().to_dict())
 
     return df.dropna()
