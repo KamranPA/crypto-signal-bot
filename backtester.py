@@ -69,19 +69,19 @@ class Backtester:
 
         test_df['signal'] = signals
 
-        # دیباگ: چاپ سیگنال‌ها
-        unique_signals = np.unique(signals)
-        print(f"📊 سیگنال‌های منحصربفرد برای {self.symbol}: {unique_signals}")
-        if len(unique_signals) == 1 and unique_signals[0] == 0:
-            print(f"⚠️ همه سیگنال‌ها صفر هستند — مدل تصمیم‌گیری نمی‌کند")
-        elif len(unique_signals) == 1:
-            print(f"⚠️ سیگنال همیشه {unique_signals[0]} است — مدل بایاس شده است")
+        # دیباگ: بررسی تنوع سیگنال
+        unique_signals, counts = np.unique(signals, return_counts=True)
+        print(f"📊 سیگنال‌های {self.symbol}: {dict(zip(unique_signals, counts))}")
+
+        if len(unique_signals) == 1:
+            print(f"⚠️ هشدار: سیگنال همیشه {unique_signals[0]} است — مدل بایاس شده")
+            return self.empty_result()  # جلوگیری از گزارش غیرواقعی
 
         # معکوس کردن target
         target_to_signal = {0: -1, 1: 0, 2: 1}
         test_df['actual'] = test_df['target'].map(target_to_signal)
 
-        # محاسبه بازده
+        # محاسبه بازده — با تأخیر یک سیگنال
         test_df['return'] = test_df['close'].pct_change().shift(-1)
         test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
         test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
@@ -89,25 +89,20 @@ class Backtester:
         # معاملات معتبر
         valid_trades = test_df[test_df['signal'] != 0]
         if len(valid_trades) == 0:
-            win_rate = 0.0
-            total_return = 0.0
-            sharpe = 0.0
-            max_drawdown = 0.0
-            avg_win = 0.0
-            avg_loss = 0.0
-            reward_risk_ratio = float('inf')
-        else:
-            win_rate = (valid_trades['signal'] == valid_trades['actual']).mean()
-            total_return = (test_df['strategy_return'] + 1).prod() - 1
-            sharpe = test_df['strategy_return'].mean() / (test_df['strategy_return'].std() + 1e-8) * np.sqrt(252)
-            cumulative = (test_df['strategy_return'] + 1).cumprod()
-            max_drawdown = (cumulative / cumulative.cummax() - 1).min()
+            return self.empty_result()
 
-            wins = valid_trades[valid_trades['strategy_return'] > 0]['strategy_return']
-            losses = valid_trades[valid_trades['strategy_return'] < 0]['strategy_return']
-            avg_win = wins.mean() if len(wins) > 0 else 0
-            avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
-            reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
+        # محاسبه واقعی معیارها
+        win_rate = (valid_trades['signal'] == valid_trades['actual']).mean()
+        total_return = (valid_trades['strategy_return'] + 1).prod() - 1  # فقط معاملات معتبر
+        sharpe = valid_trades['strategy_return'].mean() / (valid_trades['strategy_return'].std() + 1e-8) * np.sqrt(252)
+        cumulative = (valid_trades['strategy_return'] + 1).cumprod()
+        max_drawdown = (cumulative / cumulative.cummax() - 1).min()
+
+        wins = valid_trades[valid_trades['strategy_return'] > 0]['strategy_return']
+        losses = valid_trades[valid_trades['strategy_return'] < 0]['strategy_return']
+        avg_win = wins.mean() if len(wins) > 0 else 0.0
+        avg_loss = abs(losses.mean()) if len(losses) > 0 else 0.0
+        reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
 
         result = {
             "symbol": self.symbol,
@@ -120,7 +115,7 @@ class Backtester:
             "reward_risk_ratio": reward_risk_ratio,
             "total_trades": len(valid_trades),
             "positive_trades": (valid_trades['signal'] == valid_trades['actual']).sum(),
-            "last_signal": signals[-1] if len(signals) > 0 else 0
+            "last_signal": signals[-1]
         }
         return result
 
