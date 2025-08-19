@@ -1,7 +1,8 @@
+# backtester.py — نسخه ساده (بدون فیلتر)
+
 import pandas as pd
 import numpy as np
 from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
-from risk import dynamic_stop_loss
 
 class Backtester:
     def __init__(self, symbol, df, capital=10000):
@@ -20,7 +21,6 @@ class Backtester:
         # تقسیم داده: 80% آموزش، 20% تست
         split_idx = int(len(X) * (1 - 0.2))
         if split_idx < 50:
-            print(f"❌ داده کافی برای تقسیم نیست: {len(X)}")
             return self.empty_result()
 
         X_train, X_test = X[:split_idx], X[split_idx:]
@@ -47,17 +47,14 @@ class Backtester:
                 print(f"❌ خطا در آموزش LSTM: {e}")
                 lstm_pred_classes = [1] * len(y_test)
         else:
-            lstm_pred_classes = [1] * len(y_test)  # خنثی
+            lstm_pred_classes = [1] * len(y_test)
 
         # داده تست
         test_df = self.df.iloc[split_idx:].copy()
-
-        # بررسی داده تست
         if test_df.empty:
-            print(f"❌ داده‌های تست برای {self.symbol} خالی است.")
             return self.empty_result()
 
-        # افزودن پیش‌بینی‌ها
+        # ترکیب سیگنال ML
         test_df['xgb_pred'] = xgb_pred
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
         test_df['ml_avg'] = (test_df['xgb_pred'] + test_df['lstm_pred']) / 2
@@ -67,48 +64,15 @@ class Backtester:
         test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
         test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
-        # محاسبه اندیکاتورها
-        test_df['volume_ma20'] = test_df['volume'].rolling(20).mean()
-        test_df['ma50'] = test_df['close'].rolling(50).mean()
-        test_df['macd_hist_diff'] = test_df['macd_hist'].diff().fillna(0)
-
-        # حذف مقادیر nan
-        test_df.dropna(inplace=True)
-
-        if test_df.empty:
-            print(f"❌ پس از حذف nan، داده‌های تست برای {self.symbol} خالی شد.")
-            return self.empty_result()
-
-        # تولید سیگنال
+        # ⚠️ فقط سیگنال ML — بدون هیچ فیلتری
         signals = []
         for i, row in test_df.iterrows():
-            final_signal = 0
-
-            # فیلتر ۱: روند (فقط اگر قیمت خیلی پایین نباشد)
-            if row['close'] >= row['ma50'] * 0.90:
-                # فیلتر ۲: حجم (حداقل 50% از میانگین)
-                if row['volume'] >= row['volume_ma20'] * 0.5:
-                    # فیلتر ۳: سیگنال تکنیکال
-                    ta_signal = 0
-                    if (row['rsi'] > 35 and row['rsi'] < 65 and
-                        row['macd_hist'] > 0 and row['macd_hist_diff'] > 0 and
-                        row['close'] < row['bb_upper']):
-                        ta_signal = 1
-                    elif (row['rsi'] < 65 and row['rsi'] > 35 and
-                          row['macd_hist'] < 0 and row['close'] >= row['bb_upper']):
-                        ta_signal = -1
-
-                    if ta_signal != 0:
-                        # فیلتر ۴: اطمینان مدل (حداقل 1.0)
-                        ml_confidence = abs(row['ml_avg'] - 1) if ta_signal == 1 else abs(row['ml_avg'] + 1)
-                        if ml_confidence >= 1.0:
-                            final_signal = ta_signal
-
-            signals.append(final_signal)
+            ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
+            signals.append(ml_signal)
 
         test_df['signal'] = signals
 
-        # معکوس کردن target برای win_rate
+        # معکوس کردن target
         target_to_signal = {0: -1, 1: 0, 2: 1}
         test_df['actual'] = test_df['target'].map(target_to_signal)
 
@@ -117,7 +81,7 @@ class Backtester:
         test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
         test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
 
-        # معیارهای ارزیابی
+        # معیارها
         valid_trades = test_df[test_df['signal'] != 0]
         if len(valid_trades) == 0:
             win_rate = 0.0
@@ -156,7 +120,6 @@ class Backtester:
         return result
 
     def empty_result(self):
-        """بازگرداندن نتیجه خالی در صورت خطا"""
         return {
             "symbol": self.symbol,
             "win_rate": 0.0,
