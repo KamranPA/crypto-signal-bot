@@ -18,10 +18,9 @@ def send_telegram_report(results, token, chat_id):
 🎯 میانگین سود: {res['avg_win']:.2%}
 ⛔ میانگین ضرر: {res['avg_loss']:.2%}
 ⚖️ نسبت سود/ضرر: {res['reward_risk_ratio']:.2f}
-🎯 نسبت هدف: 3:1
 📊 معاملات معتبر: {res['total_trades']} (موفق: {res['positive_trades']})
 """
-    message += "\n#بک_تست #کیفیت_سیگنال #مدیریت_ریسک"
+    message += "\n#بک_تست #کیفیت_سیگنال"
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message}
