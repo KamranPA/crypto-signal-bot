@@ -8,7 +8,6 @@ class Backtester:
         self.symbol = symbol
         self.df = df
         self.capital = capital
-        self.results = []
 
     def run(self):
         # ویژگی‌های مورد استفاده
@@ -20,45 +19,45 @@ class Backtester:
 
         # تقسیم داده: 80% آموزش، 20% تست
         split_idx = int(len(X) * (1 - 0.2))
+        if split_idx < 50:
+            print(f"❌ داده کافی برای تقسیم نیست: {len(X)}")
+            return self.empty_result()
+
         X_train, X_test = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
 
         # آموزش XGBoost
-        xgb_model = train_xgboost(X_train, y_train)
-        xgb_pred = xgb_model.predict(X_test)
+        try:
+            xgb_model = train_xgboost(X_train, y_train)
+            xgb_pred = xgb_model.predict(X_test)
+        except Exception as e:
+            print(f"❌ خطا در آموزش XGBoost: {e}")
+            return self.empty_result()
 
         # آموزش LSTM
         X_train_lstm, y_train_lstm = prepare_data_for_lstm(X_train, feature_cols, 50)
         X_test_lstm, y_test_lstm = prepare_data_for_lstm(X_test, feature_cols, 50)
 
         if len(X_train_lstm) > 0 and len(X_test_lstm) > 0:
-            lstm_model = train_lstm(X_train_lstm, y_train_lstm, (X_train_lstm.shape[1], X_train_lstm.shape[2]))
-            lstm_pred = lstm_model.predict(X_test_lstm)
-            lstm_pred_classes = np.argmax(lstm_pred, axis=1)
+            try:
+                lstm_model = train_lstm(X_train_lstm, y_train_lstm, (X_train_lstm.shape[1], X_train_lstm.shape[2]))
+                lstm_pred = lstm_model.predict(X_test_lstm)
+                lstm_pred_classes = np.argmax(lstm_pred, axis=1)
+            except Exception as e:
+                print(f"❌ خطا در آموزش LSTM: {e}")
+                lstm_pred_classes = [1] * len(y_test)
         else:
             lstm_pred_classes = [1] * len(y_test)  # خنثی
 
         # داده تست
         test_df = self.df.iloc[split_idx:].copy()
 
-        # بررسی داده‌های تست
+        # بررسی داده تست
         if test_df.empty:
             print(f"❌ داده‌های تست برای {self.symbol} خالی است.")
-            return {
-                "symbol": self.symbol,
-                "win_rate": 0.0,
-                "sharpe": 0.0,
-                "max_drawdown": 0.0,
-                "total_return": 0.0,
-                "avg_win": 0.0,
-                "avg_loss": 0.0,
-                "reward_risk_ratio": float('inf'),
-                "total_trades": 0,
-                "positive_trades": 0,
-                "last_signal": 0
-            }
+            return self.empty_result()
 
-        # افزودن ویژگی‌ها
+        # افزودن پیش‌بینی‌ها
         test_df['xgb_pred'] = xgb_pred
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
         test_df['ml_avg'] = (test_df['xgb_pred'] + test_df['lstm_pred']) / 2
@@ -68,7 +67,7 @@ class Backtester:
         test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
         test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
-        # محاسبه میانگین‌ها و اندیکاتورها
+        # محاسبه اندیکاتورها
         test_df['volume_ma20'] = test_df['volume'].rolling(20).mean()
         test_df['ma50'] = test_df['close'].rolling(50).mean()
         test_df['macd_hist_diff'] = test_df['macd_hist'].diff().fillna(0)
@@ -78,29 +77,15 @@ class Backtester:
 
         if test_df.empty:
             print(f"❌ پس از حذف nan، داده‌های تست برای {self.symbol} خالی شد.")
-            return {
-                "symbol": self.symbol,
-                "win_rate": 0.0,
-                "sharpe": 0.0,
-                "max_drawdown": 0.0,
-                "total_return": 0.0,
-                "avg_win": 0.0,
-                "avg_loss": 0.0,
-                "reward_risk_ratio": float('inf'),
-                "total_trades": 0,
-                "positive_trades": 0,
-                "last_signal": 0
-            }
+            return self.empty_result()
 
-        # فیلتر سیگنال‌ها
+        # تولید سیگنال
         signals = []
         for i, row in test_df.iterrows():
             final_signal = 0
 
             # فیلتر ۱: روند (فقط اگر قیمت خیلی پایین نباشد)
-            if row['close'] < row['ma50'] * 0.95:
-                pass  # فیلتر نشود
-            else:
+            if row['close'] >= row['ma50'] * 0.90:
                 # فیلتر ۲: حجم (حداقل 50% از میانگین)
                 if row['volume'] >= row['volume_ma20'] * 0.5:
                     # فیلتر ۳: سیگنال تکنیکال
@@ -169,3 +154,19 @@ class Backtester:
             "last_signal": signals[-1] if len(signals) > 0 else 0
         }
         return result
+
+    def empty_result(self):
+        """بازگرداندن نتیجه خالی در صورت خطا"""
+        return {
+            "symbol": self.symbol,
+            "win_rate": 0.0,
+            "sharpe": 0.0,
+            "max_drawdown": 0.0,
+            "total_return": 0.0,
+            "avg_win": 0.0,
+            "avg_loss": 0.0,
+            "reward_risk_ratio": float('inf'),
+            "total_trades": 0,
+            "positive_trades": 0,
+            "last_signal": 0
+        }
