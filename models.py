@@ -1,5 +1,3 @@
-# models.py — نسخه اولیه (قبل از اصلاحات)
-
 import numpy as np
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
@@ -15,7 +13,8 @@ def prepare_data_for_xgboost(df, feature_cols):
 def train_xgboost(X_train, y_train):
     if not set(y_train.unique()) <= {0, 1, 2}:
         raise ValueError("y_train must be in range [0, 1, 2]")
-    model = XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.1)
+    # استفاده از class_weight برای تعادل
+    model = XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.1, scale_pos_weight=1.5)
     model.fit(X_train, y_train)
     return model
 
