@@ -61,13 +61,21 @@ class Backtester:
         test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
         test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
-        # ⚠️ فقط سیگنال ML — بدون فیلتر
+        # تولید سیگنال ML
         signals = []
         for i, row in test_df.iterrows():
             ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
             signals.append(ml_signal)
 
         test_df['signal'] = signals
+
+        # دیباگ: چاپ سیگنال‌ها
+        unique_signals = np.unique(signals)
+        print(f"📊 سیگنال‌های منحصربفرد برای {self.symbol}: {unique_signals}")
+        if len(unique_signals) == 1 and unique_signals[0] == 0:
+            print(f"⚠️ همه سیگنال‌ها صفر هستند — مدل تصمیم‌گیری نمی‌کند")
+        elif len(unique_signals) == 1:
+            print(f"⚠️ سیگنال همیشه {unique_signals[0]} است — مدل بایاس شده است")
 
         # معکوس کردن target
         target_to_signal = {0: -1, 1: 0, 2: 1}
