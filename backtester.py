@@ -1,5 +1,3 @@
-# backtester.py — نسخه بهینه‌شده مرحله ۱
-
 import pandas as pd
 import numpy as np
 from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
@@ -17,7 +15,6 @@ class Backtester:
         X = self.df[feature_cols]
         y = self.df['target']
 
-        # تقسیم داده
         split_idx = int(len(X) * (1 - 0.2))
         if split_idx < 50:
             return self.empty_result()
@@ -64,7 +61,7 @@ class Backtester:
         test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
         test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
-        # تولید سیگنال — بدون هیچ فیلتری
+        # تولید سیگنال ML
         signals = []
         for i, row in test_df.iterrows():
             ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
@@ -77,8 +74,8 @@ class Backtester:
         signal_counts = dict(zip(unique_signals, counts))
         print(f"📊 سیگنال‌های {self.symbol}: {signal_counts}")
 
-        if len(unique_signals) == 1:
-            print(f"⚠️ هشدار: سیگنال همیشه {unique_signals[0]} است — مدل بایاس شده")
+        if len(unique_signals) == 1 and unique_signals[0] == 0:
+            print(f"⚠️ هشدار: سیگنال همیشه 0 است — مدل بایاس شده")
             return self.empty_result()
 
         # معکوس کردن target
