@@ -7,7 +7,6 @@ from backtester import Backtester
 from telegram_bot import send_telegram_report
 
 def main():
-    # دریافت ورودی‌ها از محیط
     symbol_input = os.getenv("INPUT_SYMBOL", "BTC-USDT")
     timeframe = os.getenv("INPUT_TIMEFRAME", "15min")
     start_date = os.getenv("INPUT_START_DATE")
@@ -15,7 +14,6 @@ def main():
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-    # بررسی تاریخ
     if not start_date or not end_date:
         print('❌ لطفاً تاریخ شروع و پایان را وارد کنید.')
         return
@@ -27,7 +25,6 @@ def main():
         print(f'❌ فرمت تاریخ نامعتبر است. فرمت صحیح: YYYY-MM-DD')
         return
 
-    # پردازش ارزها
     symbols = [s.strip() for s in symbol_input.split(",") if s.strip()]
     if not symbols:
         print('❌ هیچ ارزی وارد نشده است.')
@@ -42,36 +39,27 @@ def main():
         print(f'📥 دریافت داده: {symbol}')
         df = fetch_kucoin(symbol, timeframe, start_date, end_date)
 
-        if df is None:
-            print(f'⚠️ داده‌ای برای {symbol} دریافت نشد.')
+        if df is None or len(df) < 50:
+            print(f'⚠️ داده کافی برای {symbol} وجود ندارد.')
             continue
 
-        if len(df) < 50:
-            print(f'⚠️ داده کافی برای {symbol} وجود ندارد. تعداد کندل: {len(df)}')
-            continue
-
-        # بررسی nan قبل از پیش‌پردازش
         if df.isna().any().any():
-            print(f'⚠️ داده‌های {symbol} دارای nan است (قبل از افزودن ویژگی‌ها)')
+            print(f'⚠️ داده‌های {symbol} دارای nan هستند.')
             continue
 
-        # افزودن ویژگی‌ها
         df = add_features(df)
         if len(df) < 10:
             print(f'⚠️ داده پس از پیش‌پردازش کافی نیست: {symbol}')
             continue
 
-        # بررسی nan بعد از افزودن ویژگی‌ها
         if df.isna().any().any():
             print(f'⚠️ داده‌های {symbol} پس از افزودن ویژگی‌ها دارای nan است.')
             continue
 
-        # اجرای بک‌تست
         backtester = Backtester(symbol, df, capital=10000)
         result = backtester.run()
         results.append(result)
 
-    # ارسال گزارش
     if results and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
         send_telegram_report(results, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
         print('✅ بک‌تست کامل شد و گزارش ارسال شد.')
