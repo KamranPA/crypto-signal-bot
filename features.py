@@ -34,10 +34,12 @@ def add_features(df):
     # Target: +1%, -1% در 3 کندل آینده
     df['target_up'] = (df['close'].shift(-3) >= df['close'] * 1.01).astype(int)
     df['target_down'] = (df['close'].shift(-3) <= df['close'] * 0.99).astype(int)
-    df['target'] = np.where(df['target_up'] == 1, 1,
-                   np.where(df['target_down'] == 1, -1, 0))
+    
+    # تعادل کلاس‌ها: 0 = نزولی، 1 = خنثی، 2 = صعودی
+    df['target'] = np.where(df['target_up'] == 1, 2,
+                   np.where(df['target_down'] == 1, 0, 1))
 
-    # تبدیل کلاس‌ها به 0,1,2
-    df['target'] = df['target'].map({-1: 0, 0: 1, 1: 2})
+    # دیباگ: چاپ توزیع target
+    print("📊 توزیع target:", df['target'].value_counts().to_dict())
 
     return df.dropna()
