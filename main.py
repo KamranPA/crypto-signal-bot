@@ -56,6 +56,9 @@ def main():
             print(f'⚠️ داده‌های {symbol} پس از افزودن ویژگی‌ها دارای nan است.')
             continue
 
+        # دیباگ توزیع target
+        print(f"📊 توزیع target برای {symbol}:", df['target'].value_counts().to_dict())
+
         backtester = Backtester(symbol, df)
         result = backtester.run()
         results.append(result)
