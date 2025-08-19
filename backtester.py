@@ -5,7 +5,7 @@ import numpy as np
 from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
 
 class Backtester:
-    def __init__(self, symbol, df):
+    def __init__(self, symbol, df, capital=10000):
         self.symbol = symbol
         self.df = df
 
