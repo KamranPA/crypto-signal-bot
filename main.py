@@ -52,19 +52,29 @@ def main():
         )
 
         # بررسی داده
-        if df is None or len(df) < 50:
-            print(f'⚠️ داده کافی برای {symbol} وجود ندارد.')
+        if df is None:
+            print(f'⚠️ داده‌ای برای {symbol} دریافت نشد.')
             continue
 
-        # بررسی nan
+        if len(df) < 50:
+            print(f'⚠️ داده کافی برای {symbol} وجود ندارد. تعداد کندل: {len(df)}')
+            continue
+
+        # بررسی مقادیر nan
         if df.isna().any().any():
-            print(f'⚠️ داده‌های {symbol} دارای مقادیر nan هستند — پردازش نمی‌شود.')
+            nan_cols = df.columns[df.isna().any()].tolist()
+            print(f'⚠️ داده‌های {symbol} دارای مقادیر nan در ستون‌های: {nan_cols}')
             continue
 
         # افزودن ویژگی‌ها
         df = add_features(df)
-        if len(df) < 10:
+        if df is None or len(df) < 10:
             print(f'⚠️ داده پس از پیش‌پردازش کافی نیست: {symbol}')
+            continue
+
+        # بررسی nan بعد از افزودن ویژگی‌ها
+        if df.isna().any().any():
+            print(f'⚠️ داده‌های {symbol} پس از افزودن ویژگی‌ها دارای nan است.')
             continue
 
         # اجرای بک‌تست
