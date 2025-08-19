@@ -40,6 +40,25 @@ class Backtester:
 
         # داده تست
         test_df = self.df.iloc[split_idx:].copy()
+
+        # بررسی داده‌های تست
+        if test_df.empty:
+            print(f"❌ داده‌های تست برای {self.symbol} خالی است.")
+            return {
+                "symbol": self.symbol,
+                "win_rate": 0.0,
+                "sharpe": 0.0,
+                "max_drawdown": 0.0,
+                "total_return": 0.0,
+                "avg_win": 0.0,
+                "avg_loss": 0.0,
+                "reward_risk_ratio": float('inf'),
+                "total_trades": 0,
+                "positive_trades": 0,
+                "last_signal": 0
+            }
+
+        # افزودن ویژگی‌ها
         test_df['xgb_pred'] = xgb_pred
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
         test_df['ml_avg'] = (test_df['xgb_pred'] + test_df['lstm_pred']) / 2
@@ -57,16 +76,32 @@ class Backtester:
         # حذف مقادیر nan
         test_df.dropna(inplace=True)
 
+        if test_df.empty:
+            print(f"❌ پس از حذف nan، داده‌های تست برای {self.symbol} خالی شد.")
+            return {
+                "symbol": self.symbol,
+                "win_rate": 0.0,
+                "sharpe": 0.0,
+                "max_drawdown": 0.0,
+                "total_return": 0.0,
+                "avg_win": 0.0,
+                "avg_loss": 0.0,
+                "reward_risk_ratio": float('inf'),
+                "total_trades": 0,
+                "positive_trades": 0,
+                "last_signal": 0
+            }
+
         # فیلتر سیگنال‌ها
         signals = []
         for i, row in test_df.iterrows():
             final_signal = 0
 
-            # فیلتر ۱: روند صعودی (فقط اگر قیمت خیلی پایین نباشد)
-            if row['close'] < row['ma50'] * 0.95:  # فقط اگر خیلی پایین باشد، فیلتر شود
-                pass  # هنوز سیگنال معتبر است
+            # فیلتر ۱: روند (فقط اگر قیمت خیلی پایین نباشد)
+            if row['close'] < row['ma50'] * 0.95:
+                pass  # فیلتر نشود
             else:
-                # فیلتر ۲: حجم معاملات (حداقل 50% از میانگین)
+                # فیلتر ۲: حجم (حداقل 50% از میانگین)
                 if row['volume'] >= row['volume_ma20'] * 0.5:
                     # فیلتر ۳: سیگنال تکنیکال
                     ta_signal = 0
@@ -81,7 +116,7 @@ class Backtester:
                     if ta_signal != 0:
                         # فیلتر ۴: اطمینان مدل (حداقل 1.0)
                         ml_confidence = abs(row['ml_avg'] - 1) if ta_signal == 1 else abs(row['ml_avg'] + 1)
-                        if ml_confidence >= 1.0:  # از 1.3 به 1.0 کاهش یافت
+                        if ml_confidence >= 1.0:
                             final_signal = ta_signal
 
             signals.append(final_signal)
