@@ -1,5 +1,3 @@
-# backtester.py — نسخه ساده (بدون فیلتر)
-
 import pandas as pd
 import numpy as np
 from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
@@ -11,14 +9,11 @@ class Backtester:
         self.capital = capital
 
     def run(self):
-        # ویژگی‌های مورد استفاده
         feature_cols = ['rsi', 'macd', 'macd_signal', 'macd_hist', 'bb_upper', 'bb_lower',
                         'atr', 'volume_change', 'price_change_5', 'close', 'high', 'low', 'open']
-        
         X = self.df[feature_cols]
         y = self.df['target']
 
-        # تقسیم داده: 80% آموزش، 20% تست
         split_idx = int(len(X) * (1 - 0.2))
         if split_idx < 50:
             return self.empty_result()
@@ -49,17 +44,14 @@ class Backtester:
         else:
             lstm_pred_classes = [1] * len(y_test)
 
-        # داده تست
         test_df = self.df.iloc[split_idx:].copy()
         if test_df.empty:
             return self.empty_result()
 
-        # ترکیب سیگنال ML
         test_df['xgb_pred'] = xgb_pred
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
         test_df['ml_avg'] = (test_df['xgb_pred'] + test_df['lstm_pred']) / 2
 
-        # تبدیل 0,1,2 به -1,0,1
         class_to_signal = {0: -1, 1: 0, 2: 1}
         test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
         test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
@@ -72,16 +64,13 @@ class Backtester:
 
         test_df['signal'] = signals
 
-        # معکوس کردن target
         target_to_signal = {0: -1, 1: 0, 2: 1}
         test_df['actual'] = test_df['target'].map(target_to_signal)
 
-        # محاسبه بازده
         test_df['return'] = test_df['close'].pct_change().shift(-1)
         test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
         test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
 
-        # معیارها
         valid_trades = test_df[test_df['signal'] != 0]
         if len(valid_trades) == 0:
             win_rate = 0.0
