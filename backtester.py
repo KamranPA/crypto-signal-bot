@@ -1,84 +1,132 @@
-import os
 import pandas as pd
 import numpy as np
-from data_fetcher import fetch_kucoin
-from features import add_features
-from backtester import Backtester
-from telegram_bot import send_telegram_report
+from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
 
-def main():
-    # دریافت ورودی‌ها از محیط
-    symbol_input = os.getenv("INPUT_SYMBOL", "BTC-USDT")
-    timeframe = os.getenv("INPUT_TIMEFRAME", "15min")
-    start_date = os.getenv("INPUT_START_DATE")
-    end_date = os.getenv("INPUT_END_DATE")
-    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+class Backtester:
+    def __init__(self, symbol, df, capital=10000):
+        self.symbol = symbol
+        self.df = df
+        self.capital = capital
 
-    # بررسی تاریخ
-    if not start_date or not end_date:
-        print('❌ لطفاً تاریخ شروع و پایان را وارد کنید.')
-        return
+    def run(self):
+        # ویژگی‌ها
+        feature_cols = ['rsi', 'macd', 'macd_signal', 'macd_hist', 'bb_upper', 'bb_lower',
+                        'atr', 'volume_change', 'price_change_5', 'close', 'high', 'low', 'open']
+        
+        X = self.df[feature_cols]
+        y = self.df['target']
 
-    try:
-        pd.to_datetime(start_date)
-        pd.to_datetime(end_date)
-    except Exception as e:
-        print(f'❌ فرمت تاریخ نامعتبر است. فرمت صحیح: YYYY-MM-DD')
-        return
+        split_idx = int(len(X) * (1 - 0.2))
+        if split_idx < 50:
+            return self.empty_result()
 
-    # پردازش ارزها
-    symbols = [s.strip() for s in symbol_input.split(",") if s.strip()]
-    if not symbols:
-        print('❌ هیچ ارزی وارد نشده است.')
-        return
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
 
-    print(f'📅 بک‌تست: {start_date} → {end_date}')
-    print(f'⏱ تایم‌فریم: {timeframe}')
-    print(f'🪙 ارزها: {symbols}')
+        # آموزش XGBoost
+        try:
+            xgb_model = train_xgboost(X_train, y_train)
+            xgb_pred = xgb_model.predict(X_test)
+        except Exception as e:
+            print(f"❌ خطا در آموزش XGBoost: {e}")
+            return self.empty_result()
 
-    results = []
-    for symbol in symbols:
-        print(f'📥 دریافت داده: {symbol}')
-        df = fetch_kucoin(symbol, timeframe, start_date, end_date)
+        # آموزش LSTM
+        X_train_lstm, y_train_lstm = prepare_data_for_lstm(X_train, feature_cols, 50)
+        X_test_lstm, y_test_lstm = prepare_data_for_lstm(X_test, feature_cols, 50)
 
-        if df is None:
-            print(f'⚠️ داده‌ای برای {symbol} دریافت نشد.')
-            continue
+        if len(X_train_lstm) > 0 and len(X_test_lstm) > 0:
+            try:
+                lstm_model = train_lstm(X_train_lstm, y_train_lstm, (X_train_lstm.shape[1], X_train_lstm.shape[2]))
+                lstm_pred = lstm_model.predict(X_test_lstm)
+                lstm_pred_classes = np.argmax(lstm_pred, axis=1)
+            except Exception as e:
+                print(f"❌ خطا در آموزش LSTM: {e}")
+                lstm_pred_classes = [1] * len(y_test)
+        else:
+            lstm_pred_classes = [1] * len(y_test)
 
-        if len(df) < 50:
-            print(f'⚠️ داده کافی برای {symbol} وجود ندارد. تعداد کندل: {len(df)}')
-            continue
+        # داده تست
+        test_df = self.df.iloc[split_idx:].copy()
+        if test_df.empty:
+            return self.empty_result()
 
-        # بررسی nan قبل از پیش‌پردازش
-        if df.isna().any().any():
-            print(f'⚠️ داده‌های {symbol} دارای nan است (قبل از افزودن ویژگی‌ها)')
-            continue
+        # افزودن پیش‌بینی‌ها
+        test_df['xgb_pred'] = xgb_pred
+        test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
+        test_df['ml_avg'] = (test_df['xgb_pred'] + test_df['lstm_pred']) / 2
 
-        # افزودن ویژگی‌ها
-        df = add_features(df)
-        if len(df) < 10:
-            print(f'⚠️ داده پس از پیش‌پردازش کافی نیست: {symbol}')
-            continue
+        # تبدیل 0,1,2 به -1,0,1
+        class_to_signal = {0: -1, 1: 0, 2: 1}
+        test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
+        test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
-        # بررسی nan بعد از افزودن ویژگی‌ها
-        if df.isna().any().any():
-            print(f'⚠️ داده‌های {symbol} پس از افزودن ویژگی‌ها دارای nan است.')
-            continue
+        # ⚠️ فقط سیگنال ML — بدون فیلتر
+        signals = []
+        for i, row in test_df.iterrows():
+            ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
+            signals.append(ml_signal)
 
-        # اجرای بک‌تست
-        backtester = Backtester(symbol, df, capital=10000)
-        result = backtester.run()
-        results.append(result)
+        test_df['signal'] = signals
 
-    # ارسال گزارش
-    if results and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
-        send_telegram_report(results, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
-        print('✅ بک‌تست کامل شد و گزارش ارسال شد.')
-    elif results:
-        print('✅ بک‌تست کامل شد، اما ارسال تلگرام غیرفعال است.')
-    else:
-        print('❌ هیچ بک‌تستی انجام نشد.')
+        # معکوس کردن target
+        target_to_signal = {0: -1, 1: 0, 2: 1}
+        test_df['actual'] = test_df['target'].map(target_to_signal)
 
-if __name__ == "__main__":
-    main()
+        # محاسبه بازده
+        test_df['return'] = test_df['close'].pct_change().shift(-1)
+        test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
+        test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
+
+        # معاملات معتبر
+        valid_trades = test_df[test_df['signal'] != 0]
+        if len(valid_trades) == 0:
+            win_rate = 0.0
+            total_return = 0.0
+            sharpe = 0.0
+            max_drawdown = 0.0
+            avg_win = 0.0
+            avg_loss = 0.0
+            reward_risk_ratio = float('inf')
+        else:
+            win_rate = (valid_trades['signal'] == valid_trades['actual']).mean()
+            total_return = (test_df['strategy_return'] + 1).prod() - 1
+            sharpe = test_df['strategy_return'].mean() / (test_df['strategy_return'].std() + 1e-8) * np.sqrt(252)
+            cumulative = (test_df['strategy_return'] + 1).cumprod()
+            max_drawdown = (cumulative / cumulative.cummax() - 1).min()
+
+            wins = valid_trades[valid_trades['strategy_return'] > 0]['strategy_return']
+            losses = valid_trades[valid_trades['strategy_return'] < 0]['strategy_return']
+            avg_win = wins.mean() if len(wins) > 0 else 0
+            avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
+            reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
+
+        result = {
+            "symbol": self.symbol,
+            "win_rate": win_rate,
+            "sharpe": sharpe,
+            "max_drawdown": max_drawdown,
+            "total_return": total_return,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "reward_risk_ratio": reward_risk_ratio,
+            "total_trades": len(valid_trades),
+            "positive_trades": (valid_trades['signal'] == valid_trades['actual']).sum(),
+            "last_signal": signals[-1] if len(signals) > 0 else 0
+        }
+        return result
+
+    def empty_result(self):
+        return {
+            "symbol": self.symbol,
+            "win_rate": 0.0,
+            "sharpe": 0.0,
+            "max_drawdown": 0.0,
+            "total_return": 0.0,
+            "avg_win": 0.0,
+            "avg_loss": 0.0,
+            "reward_risk_ratio": float('inf'),
+            "total_trades": 0,
+            "positive_trades": 0,
+            "last_signal": 0
+        }
