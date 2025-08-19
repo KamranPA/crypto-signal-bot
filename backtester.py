@@ -1,3 +1,5 @@
+# backtester.py — نسخه اولیه (قبل از اضافه کردن فیلترهای کیفیت)
+
 import pandas as pd
 import numpy as np
 from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
@@ -19,7 +21,6 @@ class Backtester:
         # تقسیم داده: 80% آموزش، 20% تست
         split_idx = int(len(X) * (1 - 0.2))
         if split_idx < 50:
-            print(f"❌ داده کافی برای تقسیم نیست: {len(X)}")
             return self.empty_result()
 
         X_train, X_test = X[:split_idx], X[split_idx:]
@@ -64,22 +65,13 @@ class Backtester:
         test_df['xgb_sig'] = test_df['xgb_pred'].map(class_to_signal)
         test_df['lstm_sig'] = test_df['lstm_pred'].map(class_to_signal)
 
-        # تولید سیگنال ML
+        # ⚠️ فقط سیگنال ML — بدون هیچ فیلتری (حجم، روند، اطمینان و غیره)
         signals = []
         for i, row in test_df.iterrows():
             ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
             signals.append(ml_signal)
 
         test_df['signal'] = signals
-
-        # دیباگ: بررسی تنوع سیگنال
-        unique_signals, counts = np.unique(signals, return_counts=True)
-        signal_counts = dict(zip(unique_signals, counts))
-        print(f"📊 سیگنال‌های {self.symbol}: {signal_counts}")
-
-        if len(unique_signals) == 1:
-            print(f"⚠️ هشدار: سیگنال همیشه {unique_signals[0]} است — مدل بایاس شده")
-            return self.empty_result()
 
         # معکوس کردن target برای win_rate
         target_to_signal = {0: -1, 1: 0, 2: 1}
@@ -90,25 +82,28 @@ class Backtester:
         test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
         test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
 
-        # فقط معاملات معتبر (سیگنال غیرصفر)
+        # فقط معاملات معتبر
         valid_trades = test_df[test_df['signal'] != 0]
         if len(valid_trades) == 0:
-            print(f"❌ هیچ معامله معتبری برای {self.symbol} وجود ندارد.")
-            return self.empty_result()
+            win_rate = 0.0
+            total_return = 0.0
+            sharpe = 0.0
+            max_drawdown = 0.0
+            avg_win = 0.0
+            avg_loss = 0.0
+            reward_risk_ratio = float('inf')
+        else:
+            win_rate = (valid_trades['signal'] == valid_trades['actual']).mean()
+            total_return = (test_df['strategy_return'] + 1).prod() - 1
+            sharpe = test_df['strategy_return'].mean() / (test_df['strategy_return'].std() + 1e-8) * np.sqrt(252)
+            cumulative = (test_df['strategy_return'] + 1).cumprod()
+            max_drawdown = (cumulative / cumulative.cummax() - 1).min()
 
-        # محاسبه معیارها
-        win_rate = (valid_trades['signal'] == valid_trades['actual']).mean()
-        total_return = (valid_trades['strategy_return'] + 1).prod() - 1
-        sharpe = valid_trades['strategy_return'].mean() / (valid_trades['strategy_return'].std() + 1e-8) * np.sqrt(252)
-        cumulative = (valid_trades['strategy_return'] + 1).cumprod()
-        max_drawdown = (cumulative / cumulative.cummax() - 1).min()
-
-        # میانگین سود و ضرر
-        wins = valid_trades[valid_trades['strategy_return'] > 0]['strategy_return']
-        losses = valid_trades[valid_trades['strategy_return'] < 0]['strategy_return']
-        avg_win = wins.mean() if len(wins) > 0 else 0.0
-        avg_loss = abs(losses.mean()) if len(losses) > 0 else 0.0
-        reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
+            wins = valid_trades[valid_trades['strategy_return'] > 0]['strategy_return']
+            losses = valid_trades[valid_trades['strategy_return'] < 0]['strategy_return']
+            avg_win = wins.mean() if len(wins) > 0 else 0.0
+            avg_loss = abs(losses.mean()) if len(losses) > 0 else 0.0
+            reward_risk_ratio = avg_win / avg_loss if avg_loss != 0 else float('inf')
 
         # نتیجه نهایی
         result = {
@@ -127,7 +122,6 @@ class Backtester:
         return result
 
     def empty_result(self):
-        """بازگرداندن نتیجه خالی در صورت خطا"""
         return {
             "symbol": self.symbol,
             "win_rate": 0.0,
