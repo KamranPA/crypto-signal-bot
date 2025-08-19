@@ -20,7 +20,6 @@ def main():
         print('❌ لطفاً تاریخ شروع و پایان را وارد کنید.')
         return
 
-    # اعتبارسنجی فرمت تاریخ
     try:
         pd.to_datetime(start_date)
         pd.to_datetime(end_date)
@@ -55,6 +54,11 @@ def main():
         # بررسی داده
         if df is None or len(df) < 50:
             print(f'⚠️ داده کافی برای {symbol} وجود ندارد.')
+            continue
+
+        # بررسی nan
+        if df.isna().any().any():
+            print(f'⚠️ داده‌های {symbol} دارای مقادیر nan هستند — پردازش نمی‌شود.')
             continue
 
         # افزودن ویژگی‌ها
