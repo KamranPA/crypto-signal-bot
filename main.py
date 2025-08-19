@@ -56,7 +56,7 @@ def main():
             print(f'⚠️ داده‌های {symbol} پس از افزودن ویژگی‌ها دارای nan است.')
             continue
 
-        backtester = Backtester(symbol, df, capital=10000)
+        backtester = Backtester(symbol, df)
         result = backtester.run()
         results.append(result)
 
