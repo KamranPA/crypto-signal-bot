@@ -15,8 +15,10 @@ class Backtester:
         X = self.df[feature_cols]
         y = self.df['target']
 
+        # تقسیم داده: 80% آموزش، 20% تست
         split_idx = int(len(X) * (1 - 0.2))
         if split_idx < 50:
+            print(f"❌ داده کافی برای تقسیم نیست: {len(X)}")
             return self.empty_result()
 
         X_train, X_test = X[:split_idx], X[split_idx:]
