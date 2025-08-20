@@ -1,4 +1,4 @@
-# features.py — نسخه اصلاح‌شده با تعادل target
+# features.py — نسخه نهایی با تعادل کلاس و دیباگ
 
 import pandas as pd
 import numpy as np
@@ -42,10 +42,10 @@ def add_features(df):
     df['target'] = np.where(df['target_up'] == 1, 2,
                    np.where(df['target_down'] == 1, 0, 1))
 
-    # 🔁 حذف کلاس‌های نامتعادل (اگر خیلی زیاد هستند)
+    # 🔁 تعادل کلاس‌ها (اگر یک کلاس خیلی بیشتر است)
     class_counts = df['target'].value_counts()
     min_count = min(class_counts.get(0, 0), class_counts.get(1, 0), class_counts.get(2, 0))
-    
+
     if min_count > 0:
         sampled = []
         for cls in [0, 1, 2]:
