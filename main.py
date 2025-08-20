@@ -14,6 +14,7 @@ def main():
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+    # بررسی ورودی تاریخ
     if not start_date or not end_date:
         print('❌ لطفاً تاریخ شروع و پایان را وارد کنید.')
         return
@@ -25,20 +26,31 @@ def main():
         print(f'❌ فرمت تاریخ نامعتبر است. فرمت صحیح: YYYY-MM-DD')
         return
 
+    # پردازش لیست ارزها
     symbols = [s.strip() for s in symbol_input.split(",") if s.strip()]
     if not symbols:
         print('❌ هیچ ارزی وارد نشده است.')
         return
 
+    # نمایش اطلاعات اجرا
     print(f'📅 بک‌تست: {start_date} → {end_date}')
     print(f'⏱ تایم‌فریم: {timeframe}')
     print(f'🪙 ارزها: {symbols}')
 
+    # لیست نتایج
     results = []
+
+    # پردازش هر ارز
     for symbol in symbols:
         print(f'📥 دریافت داده: {symbol}')
-        df = fetch_kucoin(symbol, timeframe, start_date, end_date)
+        df = fetch_kucoin(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=start_date,
+            end_date=end_date
+        )
 
+        # بررسی داده
         if df is None or len(df) < 50:
             print(f'⚠️ داده کافی برای {symbol} وجود ندارد.')
             continue
@@ -47,6 +59,7 @@ def main():
             print(f'⚠️ داده‌های {symbol} دارای nan هستند.')
             continue
 
+        # افزودن ویژگی‌ها
         df = add_features(df)
         if len(df) < 10:
             print(f'⚠️ داده پس از پیش‌پردازش کافی نیست: {symbol}')
@@ -56,13 +69,18 @@ def main():
             print(f'⚠️ داده‌های {symbol} پس از افزودن ویژگی‌ها دارای nan است.')
             continue
 
-        # دیباگ توزیع target
-        print(f"📊 توزیع target برای {symbol}:", df['target'].value_counts().to_dict())
-
+        # اجرای بک‌تست
         backtester = Backtester(symbol, df)
         result = backtester.run()
         results.append(result)
 
+        # دیباگ: نمایش نسبت سود به ضرر
+        if result['total_trades'] > 0:
+            print(f"📊 نسبت سود/ضرر {symbol}: {result['reward_risk_ratio']:.2f}")
+            print(f"📈 بازده کلی {symbol}: {result['total_return']:.1%}")
+            print(f"🎯 میانگین سود: {result['avg_win']:.2%}, میانگین ضرر: {result['avg_loss']:.2%}")
+
+    # ارسال گزارش به تلگرام (اگر توکن وجود داشته باشد)
     if results and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
         send_telegram_report(results, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
         print('✅ بک‌تست کامل شد و گزارش ارسال شد.')
@@ -71,5 +89,6 @@ def main():
     else:
         print('❌ هیچ بک‌تستی انجام نشد.')
 
+# اجرای برنامه
 if __name__ == "__main__":
     main()
