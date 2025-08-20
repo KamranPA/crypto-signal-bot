@@ -1,4 +1,4 @@
-# features.py — نسخه نهایی با تعادل کلاس و دیباگ
+# features.py — نسخه نهایی با فیلترهای حجم، روند و تعادل target
 
 import pandas as pd
 import numpy as np
@@ -29,9 +29,15 @@ def add_features(df):
 
     # Volume Change
     df['volume_change'] = df['volume'].pct_change()
+    df['volume_ma'] = df['volume'].rolling(window=20).mean()
+    df['volume_ratio'] = df['volume'] / df['volume_ma']
 
     # Price Change (5 candles ago)
     df['price_change_5'] = df['close'].pct_change(5)
+
+    # 📈 Trend Filter: روند 20-کندله
+    df['price_change_20'] = df['close'].pct_change(20)
+    df['trend'] = np.where(df['price_change_20'] > 0, 1, -1)
 
     # 🎯 هدف: +1% در 3 کندل آینده؟
     df['target_up'] = (df['close'].shift(-3) >= df['close'] * 1.01).astype(int)
@@ -58,4 +64,7 @@ def add_features(df):
     # دیباگ: چاپ توزیع target بعد از تعادل
     print("📊 توزیع target بعد از تعادل:", df['target'].value_counts().to_dict())
 
-    return df.dropna()
+    # حذف NaN
+    df = df.dropna()
+
+    return df
