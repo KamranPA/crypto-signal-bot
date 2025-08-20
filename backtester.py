@@ -42,6 +42,11 @@ class Backtester:
         # افزودن پیش‌بینی‌ها
         test_df['xgb_pred'] = xgb_pred
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
+
+        # دیباگ: بررسی xgb_pred و lstm_pred
+        print(f"📊 xgb_pred: {test_df['xgb_pred'].iloc[0]:.2f}")
+        print(f"📊 lstm_pred: {test_df['lstm_pred'].iloc[0]:.2f}")
+
         test_df['ml_avg'] = (test_df['xgb_pred'] + test_df['lstm_pred']) / 2
 
         # تولید سیگنال ML
