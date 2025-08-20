@@ -50,6 +50,7 @@ class Backtester:
         # تولید سیگنال ML
         signals = []
         for i, row in test_df.iterrows():
+            print(f"📊 ml_avg: {row['ml_avg']:.2f}")
             if row['ml_avg'] > 1.3:
                 ml_signal = 1
             elif row['ml_avg'] < 0.7:
