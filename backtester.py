@@ -1,5 +1,3 @@
-# backtester.py — نسخه بدون target (موقتی)
-
 import pandas as pd
 import numpy as np
 from models import prepare_data_for_xgboost, prepare_data_for_lstm
@@ -23,18 +21,17 @@ class Backtester:
 
         X_train, X_test = X[:split_idx], X[split_idx:]
 
-        # --- XGBoost: بدون آموزش (چون target نیست) ---
-        xgb_pred = [1] * len(X_test)  # سیگنال خنثی (یا تصادفی)
+        # --- XGBoost: بدون آموزش ---
+        xgb_pred = np.random.choice([0, 1, 2], size=len(X_test))  # سیگنال تصادفی
 
-        # --- LSTM: بدون آموزش (چون target نیست) ---
+        # --- LSTM: بدون آموزش ---
         X_train_lstm, _ = prepare_data_for_lstm(X_train, feature_cols, 50)
         X_test_lstm, _ = prepare_data_for_lstm(X_test, feature_cols, 50)
 
         if len(X_train_lstm) > 0 and len(X_test_lstm) > 0:
-            # فقط ایجاد شکل صحیح داده — بدون آموزش
-            lstm_pred_classes = [1] * len(X_test_lstm)  # سیگنال خنثی
+            lstm_pred_classes = np.random.choice([0, 1, 2], size=len(X_test_lstm))  # سیگنال تصادفی
         else:
-            lstm_pred_classes = [1] * len(X_test)
+            lstm_pred_classes = np.random.choice([0, 1, 2], size=len(X_test))
 
         # داده تست
         test_df = self.df.iloc[split_idx:].copy()
@@ -97,7 +94,7 @@ class Backtester:
 
         result = {
             "symbol": self.symbol,
-            "win_rate": 0.0,  # بدون target، نرخ برد تعریف نمی‌شود
+            "win_rate": 0.0,
             "sharpe": sharpe,
             "max_drawdown": max_drawdown,
             "total_return": total_return,
