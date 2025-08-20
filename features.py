@@ -49,7 +49,11 @@ def add_features(df):
     df['target'] = np.where(buy_signal, 2,
                    np.where(sell_signal, 0, 1))
 
-    # دیباگ
+    # دیباگ: چاپ توزیع target
     print("📊 توزیع target جدید:", df['target'].value_counts().to_dict())
+
+    # اطمینان از وجود target
+    if 'target' not in df.columns:
+        raise ValueError("❌ ستون 'target' در داده وجود ندارد!")
 
     return df.dropna()
