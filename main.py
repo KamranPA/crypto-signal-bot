@@ -3,10 +3,6 @@
 import os
 import pandas as pd
 import numpy as np
-from data_fetcher import fetch_kucoin
-from features import add_features
-from backtester import Backtester
-from telegram_bot import send_telegram_report
 
 def main():
     symbol_input = os.getenv("INPUT_SYMBOL", "BTC-USDT")
@@ -39,6 +35,17 @@ def main():
     print(f'🪙 ارزها: {symbols}')
 
     results = []
+
+    # تست وارد کردن ماژول‌ها
+    try:
+        from data_fetcher import fetch_kucoin
+        from features import add_features
+        from backtester import Backtester
+        from telegram_bot import send_telegram_report
+    except ImportError as e:
+        print(f"❌ خطای وارد کردن ماژول: {e}")
+        return
+
     for symbol in symbols:
         print(f'📥 دریافت داده: {symbol}')
         df = fetch_kucoin(symbol, timeframe, start_date, end_date)
