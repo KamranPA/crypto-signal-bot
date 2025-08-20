@@ -1,5 +1,3 @@
-# backtester.py — نسخه بدون target (موقتی)
-
 import pandas as pd
 import numpy as np
 from models import prepare_data_for_xgboost, prepare_data_for_lstm
@@ -23,15 +21,14 @@ class Backtester:
 
         X_train, X_test = X[:split_idx], X[split_idx:]
 
-        # --- XGBoost: بدون آموزش (چون target نیست) ---
-        xgb_pred = [1] * len(X_test)  # سیگنال خنثی یا تصادفی
+        # --- XGBoost: بدون آموزش ---
+        xgb_pred = [1] * len(X_test)  # سیگنال خنثی
 
-        # --- LSTM: بدون آموزش (چون target نیست) ---
+        # --- LSTM: بدون آموزش ---
         X_train_lstm, _ = prepare_data_for_lstm(X_train, feature_cols, 50)
         X_test_lstm, _ = prepare_data_for_lstm(X_test, feature_cols, 50)
 
         if len(X_train_lstm) > 0 and len(X_test_lstm) > 0:
-            # فقط ایجاد شکل صحیح داده — بدون آموزش
             lstm_pred_classes = [1] * len(X_test_lstm)  # سیگنال خنثی
         else:
             lstm_pred_classes = [1] * len(X_test)
@@ -50,7 +47,13 @@ class Backtester:
         # تولید سیگنال ML
         signals = []
         for i, row in test_df.iterrows():
-            ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
+            print(f"📊 ml_avg: {row['ml_avg']:.2f}")
+            if row['ml_avg'] > 1.3:
+                ml_signal = 1
+            elif row['ml_avg'] < 0.7:
+                ml_signal = -1
+            else:
+                ml_signal = 0
             signals.append(ml_signal)
 
         # تنظیم طول signals
@@ -89,7 +92,7 @@ class Backtester:
 
         result = {
             "symbol": self.symbol,
-            "win_rate": 0.0,  # بدون target، نرخ برد تعریف نمی‌شود
+            "win_rate": 0.0,
             "sharpe": sharpe,
             "max_drawdown": max_drawdown,
             "total_return": total_return,
