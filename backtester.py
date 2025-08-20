@@ -1,6 +1,7 @@
+# backtester.py — نسخه نهایی با نمودار معاملات
+
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from models import prepare_data_for_xgboost, prepare_data_for_lstm
 
 class Backtester:
@@ -88,29 +89,36 @@ class Backtester:
             "last_signal": signals[-1] if len(signals) > 0 else 0
         }
 
-        # ✅ شبیه‌سازی بصری معاملات
+        # ✅ رسم نمودار معاملات (در صورت وجود matplotlib)
         self.plot_trades(test_df, result)
 
         return result
 
     def plot_trades(self, test_df, result):
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.plot(test_df.index, test_df['close'], label='قیمت', color='blue')
+        try:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.plot(test_df.index, test_df['close'], label='قیمت', color='blue')
 
-        # نمایش سیگنال‌ها
-        buy_signals = test_df[test_df['signal'] == 1]
-        sell_signals = test_df[test_df['signal'] == -1]
+            # نمایش سیگنال‌ها
+            buy_signals = test_df[test_df['signal'] == 1]
+            sell_signals = test_df[test_df['signal'] == -1]
 
-        ax.scatter(buy_signals.index, buy_signals['close'], color='green', marker='^', s=100, label='خرید')
-        ax.scatter(sell_signals.index, sell_signals['close'], color='red', marker='v', s=100, label='فروش')
+            ax.scatter(buy_signals.index, buy_signals['close'], color='green', marker='^', s=100, label='خرید')
+            ax.scatter(sell_signals.index, sell_signals['close'], color='red', marker='v', s=100, label='فروش')
 
-        ax.set_title(f'شبیه‌سازی معاملات: {self.symbol}')
-        ax.set_xlabel('زمان')
-        ax.set_ylabel('قیمت')
-        ax.legend()
-        plt.tight_layout()
-        plt.savefig(f'{self.symbol}_trades.png')
-        plt.close()
+            ax.set_title(f'شبیه‌سازی معاملات: {self.symbol}')
+            ax.set_xlabel('زمان')
+            ax.set_ylabel('قیمت')
+            ax.legend()
+            plt.tight_layout()
+            plt.savefig(f'{self.symbol.replace("/", "_")}_trades.png')
+            plt.close()
+            print(f"✅ نمودار معاملات ذخیره شد: {self.symbol.replace('/', '_')}_trades.png")
+        except ImportError:
+            print("❌ matplotlib نصب نیست — نمودار تولید نشد")
+        except Exception as e:
+            print(f"❌ خطای رسم نمودار: {e}")
 
     def empty_result(self):
         return {
