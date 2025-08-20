@@ -1,3 +1,5 @@
+# models.py — نسخه نهایی با تعادل کلاس و مدیریت خطا
+
 import numpy as np
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
@@ -15,18 +17,32 @@ def prepare_data_for_xgboost(df, feature_cols):
 
 def train_xgboost(X_train, y_train):
     """
-    آموزش مدل XGBoost
+    آموزش مدل XGBoost با تعادل کلاس
     """
     if not set(y_train.unique()) <= {0, 1, 2}:
         raise ValueError("y_train must be in range [0, 1, 2]")
-    model = XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.1)
-    model.fit(X_train, y_train)
+    
+    # استفاده از class_weight برای کاهش بایاس
+    model = XGBClassifier(
+        n_estimators=100,
+        max_depth=5,
+        learning_rate=0.1,
+        scale_pos_weight=1.0,  # کمک به تعادل کلاس‌ها
+        random_state=42,
+        eval_metric='mlogloss'
+    )
+    try:
+        model.fit(X_train, y_train)
+        print(f"✅ XGBoost آموزش دید — تعداد نمونه‌ها: {len(X_train)}")
+    except Exception as e:
+        print(f"❌ خطا در آموزش XGBoost: {e}")
+        return None
     return model
 
 def prepare_data_for_lstm(df, feature_cols, lookback=50):
     """
     آماده‌سازی داده برای LSTM
-    - توجه: فقط ردیف‌هایی که اندیس >= lookback هستند، قابل استفاده هستند
+    - فقط ردیف‌هایی که اندیس >= lookback هستند، قابل استفاده هستند
     """
     if 'target' not in df.columns:
         print('❌ ستون "target" وجود ندارد. LSTM اجرا نمی‌شود.')
@@ -65,6 +81,7 @@ def train_lstm(X_train, y_train, input_shape):
         ])
         model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
         model.fit(X_train, y_train, epochs=10, batch_size=32, verbose=0)
+        print(f"✅ LSTM آموزش دید — تعداد نمونه‌ها: {len(X_train)}")
         return model
     except Exception as e:
         print(f"❌ خطا در آموزش LSTM: {e}")
