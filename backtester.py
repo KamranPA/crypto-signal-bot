@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from models import prepare_data_for_xgboost, prepare_data_for_lstm
 
 class Backtester:
@@ -42,45 +43,15 @@ class Backtester:
         test_df['lstm_pred'] = lstm_pred_classes[:len(test_df)]
         test_df['ml_avg'] = (test_df['xgb_pred'] + test_df['lstm_pred']) / 2
 
-        # دیباگ: بررسی ml_avg
-        print(f"📊 ml_avg برای {self.symbol}: {test_df['ml_avg'].describe()}")
-
-        # تولید سیگنال ML با فیلترهای کیفیت
+        # تولید سیگنال ML
         signals = []
         for i, row in test_df.iterrows():
-            # فیلتر اعتماد
-            confidence = abs(row['ml_avg'] - 1.0)
-            if confidence < 0.5:
-                ml_signal = 0
-            elif row['ml_avg'] > 1.0:
-                ml_signal = 1
-            else:
-                ml_signal = -1
-
-            # فیلتر حجم
-            if row['volume_ratio'] < 1.5:
-                ml_signal = 0
-
-            # فیلتر روند
-            if row['trend'] == 1 and ml_signal == -1:
-                ml_signal = 0
-            elif row['trend'] == -1 and ml_signal == 1:
-                ml_signal = 0
-
+            ml_signal = 1 if row['ml_avg'] > 1.3 else (-1 if row['ml_avg'] < 0.7 else 0)
             signals.append(ml_signal)
-
-        # تنظیم طول signals
-        if len(signals) < len(test_df):
-            signals = [0] * (len(test_df) - len(signals)) + signals
 
         test_df['signal'] = signals
 
-        # دیباگ: بررسی تنوع سیگنال
-        unique_signals, counts = np.unique(signals, return_counts=True)
-        signal_counts = dict(zip(unique_signals, counts))
-        print(f"📊 سیگنال‌های {self.symbol}: {signal_counts}")
-
-        # محاسبه بازده (فرضی)
+        # محاسبه بازده
         test_df['return'] = test_df['close'].pct_change().shift(-1)
         test_df['strategy_return'] = test_df['return'] * test_df['signal'].shift(1).fillna(0)
         test_df['strategy_return'] = test_df['strategy_return'].fillna(0)
@@ -116,7 +87,30 @@ class Backtester:
             "positive_trades": 0,
             "last_signal": signals[-1] if len(signals) > 0 else 0
         }
+
+        # ✅ شبیه‌سازی بصری معاملات
+        self.plot_trades(test_df, result)
+
         return result
+
+    def plot_trades(self, test_df, result):
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.plot(test_df.index, test_df['close'], label='قیمت', color='blue')
+
+        # نمایش سیگنال‌ها
+        buy_signals = test_df[test_df['signal'] == 1]
+        sell_signals = test_df[test_df['signal'] == -1]
+
+        ax.scatter(buy_signals.index, buy_signals['close'], color='green', marker='^', s=100, label='خرید')
+        ax.scatter(sell_signals.index, sell_signals['close'], color='red', marker='v', s=100, label='فروش')
+
+        ax.set_title(f'شبیه‌سازی معاملات: {self.symbol}')
+        ax.set_xlabel('زمان')
+        ax.set_ylabel('قیمت')
+        ax.legend()
+        plt.tight_layout()
+        plt.savefig(f'{self.symbol}_trades.png')
+        plt.close()
 
     def empty_result(self):
         return {
