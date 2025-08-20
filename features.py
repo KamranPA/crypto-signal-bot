@@ -1,4 +1,4 @@
-# features.py — نسخه اصلاح‌شده (هدف تکنیکال)
+# features.py — نسخه بدون target
 
 import pandas as pd
 import numpy as np
@@ -33,27 +33,7 @@ def add_features(df):
     # Price Change (5 candles ago)
     df['price_change_5'] = df['close'].pct_change(5)
 
-    # 🎯 هدف جدید: سیگنال تکنیکال (نه حرکت قیمت)
-    buy_signal = (
-        (df['rsi'] > 30) & (df['rsi'] < 60) &
-        (df['macd_hist'] > 0) & (df['macd_hist'] > df['macd_hist'].shift(1)) &
-        (df['close'] < df['bb_upper'])
-    )
-    sell_signal = (
-        (df['rsi'] > 60) & (df['rsi'] < 70) &
-        (df['macd_hist'] < 0) &
-        (df['close'] >= df['bb_upper'])
-    )
-
-    # 🎯 تبدیل به target: 2=خرید، 0=فروش، 1=هیچکدام
-    df['target'] = np.where(buy_signal, 2,
-                   np.where(sell_signal, 0, 1))
-
-    # دیباگ: چاپ توزیع target
-    print("📊 توزیع target جدید:", df['target'].value_counts().to_dict())
-
-    # اطمینان از وجود target
-    if 'target' not in df.columns:
-        raise ValueError("❌ ستون 'target' در داده وجود ندارد!")
+    # ✅ بدون target
+    # df['target'] = ... → حذف شد
 
     return df.dropna()
