@@ -52,4 +52,4 @@ def add_features(df):
     # دیباگ
     print("📊 توزیع target جدید:", df['target'].value_counts().to_dict())
 
-    return df.dropna()غ
+    return df.dropna()
