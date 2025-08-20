@@ -1,4 +1,4 @@
-# models.py — نسخه نهایی با تعادل کلاس و مدیریت خطا
+# models.py — نسخه نهایی با scale_pos_weight
 
 import numpy as np
 from xgboost import XGBClassifier
@@ -8,26 +8,19 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 
 def prepare_data_for_xgboost(df, feature_cols):
-    """
-    آماده‌سازی داده برای XGBoost
-    """
     X = df[feature_cols]
     y = df['target']
     return X, y
 
 def train_xgboost(X_train, y_train):
-    """
-    آموزش مدل XGBoost با تعادل کلاس
-    """
     if not set(y_train.unique()) <= {0, 1, 2}:
         raise ValueError("y_train must be in range [0, 1, 2]")
     
-    # استفاده از class_weight برای کاهش بایاس
     model = XGBClassifier(
         n_estimators=100,
         max_depth=5,
         learning_rate=0.1,
-        scale_pos_weight=1.0,  # کمک به تعادل کلاس‌ها
+        scale_pos_weight=1.0,
         random_state=42,
         eval_metric='mlogloss'
     )
@@ -40,10 +33,6 @@ def train_xgboost(X_train, y_train):
     return model
 
 def prepare_data_for_lstm(df, feature_cols, lookback=50):
-    """
-    آماده‌سازی داده برای LSTM
-    - فقط ردیف‌هایی که اندیس >= lookback هستند، قابل استفاده هستند
-    """
     if 'target' not in df.columns:
         print('❌ ستون "target" وجود ندارد. LSTM اجرا نمی‌شود.')
         return np.array([]), np.array([])
@@ -52,7 +41,6 @@ def prepare_data_for_lstm(df, feature_cols, lookback=50):
     data = df[feature_cols].values
     target = df['target'].values
 
-    # شروع از lookback تا انتهای داده
     for i in range(lookback, len(data)):
         X.append(data[i-lookback:i])
         y.append(target[i])
@@ -61,15 +49,12 @@ def prepare_data_for_lstm(df, feature_cols, lookback=50):
     y = np.array(y)
 
     if len(X) == 0:
-        print('❌ داده کافی برای LSTM وجود ندارد (طول داده کمتر از lookback)')
+        print('❌ داده کافی برای LSTM وجود ندارد')
         return np.array([]), np.array([])
 
     return X, y
 
 def train_lstm(X_train, y_train, input_shape):
-    """
-    آموزش مدل LSTM
-    """
     try:
         model = Sequential([
             LSTM(50, return_sequences=True, input_shape=input_shape),
