@@ -28,22 +28,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v3  # ✅ تغییر به v3
+      - name: Setup Mambaforge
+        uses: mamba-org/setup-mambaforge@v1
         with:
-          auto-update-conda: true
           python-version: 3.10
 
       - name: Create and activate environment
         shell: bash -l {0}
         run: |
-          conda env create -f environment.yml
-          conda activate trading-bot
+          mamba env create -f environment.yml
+          mamba activate trading-bot
 
       - name: Show environment info
         shell: bash -l {0}
         run: |
-          conda activate trading-bot
+          mamba activate trading-bot
           python --version
           python -c "import xgboost; print('✅ xgboost loaded')"
           python -c "import matplotlib; print('✅ matplotlib loaded')"
@@ -58,7 +57,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          conda activate trading-bot
+          mamba activate trading-bot
           python main.py
 
       - name: Upload plots
