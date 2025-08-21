@@ -7,33 +7,46 @@ import os
 from datetime import datetime
 
 def send_telegram(token, chat_id, text):
+    """
+    ارسال پیام به تلگرام با پشتیبانی از پیام‌های طولانی
+    """
     if not token or not chat_id:
         print("⚠️ توکن یا آی‌دی تلگرام وجود ندارد.")
         return
+
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    max_length = 4096
+    max_length = 4096  # حداکثر طول مجاز پیام تلگرام
     parts = []
     current_part = ""
+
     for line in text.split('\n'):
-        if len(current_part) + len(line) + 1 > max_length:
+        line_length = len(line) + 1  # +1 برای \n
+        if len(current_part) + line_length > max_length:
             parts.append(current_part)
             current_part = line
         else:
             current_part += '\n' + line if current_part else line
+
     if current_part:
         parts.append(current_part)
-    for part in parts:
-        data = {"chat_id": chat_id, "text": part, "parse_mode": "Markdown"}
+
+    for i, part in enumerate(parts):
+        data = {
+            "chat_id": chat_id,
+            "text": part,
+            "parse_mode": "Markdown"
+        }
         try:
-            r = requests.post(url, data=data)
-            if r.status_code == 200:
-                print("✅ پیام ارسال شد.")
+            response = requests.post(url, data=data)
+            if response.status_code == 200:
+                print(f"✅ بخش {i+1}/{len(parts)} پیام به تلگرام ارسال شد.")
             else:
-                print(f"❌ خطا: {r.text}")
+                print(f"❌ خطا در ارسال بخش {i+1}: {response.text}")
         except Exception as e:
-            print(f"❌ خطای شبکه: {e}")
+            print(f"❌ خطای شبکه هنگام ارسال بخش {i+1}: {e}")
 
 def main():
+    # دریافت ورودی‌ها از متغیرهای محیطی
     symbol = os.getenv("SYMBOL") or "BTC/USDT"
     timeframe = os.getenv("TIMEFRAME") or "1h"
     since_str = os.getenv("SINCE") or "2024-01-01"
@@ -43,7 +56,7 @@ def main():
 
     print(f"🚀 شروع بک‌تست: {symbol} | {timeframe} | {since_str} تا {until_str}")
 
-    # تبدیل تاریخ
+    # تبدیل تاریخ‌ها
     try:
         since_dt = datetime.strptime(since_str, "%Y-%m-%d")
         until_dt = datetime.strptime(until_str, "%Y-%m-%d")
@@ -55,35 +68,41 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده
+    # دریافت داده از صرافی
     try:
         exchange = ccxt.kucoin()
         all_data = []
         fetch_until = since_ms
-        while fetch_until < until_ms + 86400000:
+
+        while fetch_until < until_ms + 86400000:  # +1 روز
             data = exchange.fetch_ohlcv(symbol, timeframe, since=fetch_until, limit=1000)
-            if not 
+            if not data:
                 break
             all_data.extend(data)
             fetch_until = data[-1][0] + 1
             if data[-1][0] > until_ms:
                 break
+
         df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+        # فیلتر بازه زمانی
         df = df[(df['timestamp'] >= since_str) & (df['timestamp'] <= until_str)]
         if len(df) == 0:
             report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
+
         print(f"✅ {len(df)} کندل دریافت شد.")
+
     except Exception as e:
         error_msg = f"❌ خطای دریافت داده: {e}"
         print(error_msg)
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # محاسبه ATR و MA20
+    # محاسبه ATR
     df['tr'] = np.maximum(
         df['high'] - df['low'],
         np.maximum(
@@ -92,10 +111,14 @@ def main():
         )
     )
     df['atr'] = df['tr'].rolling(14).mean()
+
+    # محاسبه میانگین متحرک 20 دوره‌ای
     df['ma20'] = df['close'].rolling(20).mean()
+
+    # حذف سطرهای خالی
     df.dropna(inplace=True)
 
-    # تولید سیگنال
+    # تولید سیگنال‌های معاملاتی
     signals = []
     for i in range(len(df) - 1):
         row = df.iloc[i]
@@ -104,7 +127,7 @@ def main():
         atr = row['atr']
         ma20 = row['ma20']
 
-        # Long: قیمت زیر MA20 و کندل نزولی
+        # سیگنال Long: قیمت زیر MA20 و کندل نزولی
         if close < row['open'] and close < ma20 - 0.5 * atr:
             entry = close
             sl = entry - 1.5 * atr
@@ -112,7 +135,7 @@ def main():
             result = "TP" if next_row['high'] >= tp else "SL" if next_row['low'] <= sl else "در جریان"
             signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
 
-        # Short: قیمت بالای MA20 و کندل صعودی
+        # سیگنال Short: قیمت بالای MA20 و کندل صعودی
         elif close > row['open'] and close > ma20 + 0.5 * atr:
             entry = close
             sl = entry + 1.5 * atr
@@ -145,7 +168,10 @@ def main():
     else:
         report = "❌ هیچ سیگنالی تولید نشد."
 
+    # چاپ گزارش
     print("\n" + report)
+
+    # ارسال به تلگرام
     send_telegram(telegram_token, telegram_chat_id, report)
 
 if __name__ == "__main__":
