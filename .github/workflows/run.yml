@@ -1,15 +1,14 @@
-# .github/workflows/run.yml
 name: Backtest
 
 on:
   workflow_dispatch:
     inputs:
       symbol:
-        description: 'Symbol (e.g. BTC-USDT, ETH-USDT)'
+        description: 'Symbol (e.g. BTC-USDT)'
         required: true
         default: 'BTC-USDT'
       timeframe:
-        description: 'Timeframe (e.g. 15m, 1h, 4h)'
+        description: 'Timeframe (e.g. 1h, 4h)'
         required: true
         default: '1h'
       start_date:
@@ -25,8 +24,7 @@ jobs:
   backtest:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -38,12 +36,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Show installed packages
-        run: |
-          python -c "import xgboost; print('✅ xgboost loaded')"
-          python -c "import tensorflow as tf; print('✅ tensorflow loaded')"
-          python -c "import matplotlib; print('✅ matplotlib loaded')"
-
       - name: Run backtest
         env:
           INPUT_SYMBOL: ${{ github.event.inputs.symbol }}
@@ -52,10 +44,9 @@ jobs:
           INPUT_END_DATE: ${{ github.event.inputs.end_date }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python main.py
+        run: python main.py
 
-      - name: Upload plots
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
