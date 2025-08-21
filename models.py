@@ -1,32 +1,46 @@
-# features.py
-import pandas as pd
+# models.py
 import numpy as np
-import ta
+from xgboost import XGBClassifier
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
 
-def add_features(df):
-    df = df.copy()
+def prepare_data_for_xgboost(df, feature_cols):
+    X = df[feature_cols]
+    y = df['target']
+    return X, y
 
-    df['rsi'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
-    macd = ta.trend.MACD(df['close'])
-    df['macd'] = macd.macd()
-    df['macd_signal'] = macd.macd_signal()
-    df['macd_hist'] = macd.macd_diff()
+def train_xgboost(X_train, y_train):
+    if not set(y_train.unique()) <= {0, 1, 2}:
+        raise ValueError("y_train must be in range [0, 1, 2]")
+    model = XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.1)
+    model.fit(X_train, y_train)
+    return model
 
-    bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
-    df['bb_upper'] = bb.bollinger_hband()
-    df['bb_lower'] = bb.bollinger_lband()
-    df['bb_middle'] = bb.bollinger_mavg()
+def prepare_data_for_lstm(df, feature_cols, lookback=50):
+    if 'target' not in df.columns:
+        print('❌ ستون "target" وجود ندارد. LSTM اجرا نمی‌شود.')
+        return np.array([]), np.array([])
+    X, y = [], []
+    data = df[feature_cols].values
+    target = df['target'].values
+    for i in range(lookback, len(data)):
+        X.append(data[i-lookback:i])
+        y.append(target[i])
+    return np.array(X), np.array(y)
 
-    df['atr'] = ta.volatility.AverageTrueRange(
-        df['high'], df['low'], df['close'], window=14
-    ).average_true_range()
-
-    df['volume_change'] = df['volume'].pct_change()
-    df['price_change_5'] = df['close'].pct_change(5)
-
-    df['target_up'] = (df['close'].shift(-3) >= df['close'] * 1.01).astype(int)
-    df['target_down'] = (df['close'].shift(-3) <= df['close'] * 0.99).astype(int)
-    df['target'] = np.where(df['target_up'] == 1, 2,
-                   np.where(df['target_down'] == 1, 0, 1))
-
-    return df.dropna()
+def train_lstm(X_train, y_train, input_shape):
+    try:
+        model = Sequential([
+            LSTM(50, return_sequences=True, input_shape=input_shape),
+            Dropout(0.2),
+            LSTM(50, return_sequences=False),
+            Dropout(0.2),
+            Dense(25),
+            Dense(3, activation='softmax')
+        ])
+        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        model.fit(X_train, y_train, epochs=10, batch_size=32, verbose=0)
+        return model
+    except Exception as e:
+        print(f"❌ خطا در آموزش LSTM: {e}")
+        return None
