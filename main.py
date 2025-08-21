@@ -1,3 +1,4 @@
+# main.py
 import os
 import pandas as pd
 from data_fetcher import fetch_kucoin
