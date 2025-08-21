@@ -23,7 +23,6 @@ class Backtester:
         # --- XGBoost: بدون آموزش ---
         try:
             from xgboost import XGBClassifier
-            xgb_model = XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.1)
             xgb_pred = np.random.choice([0, 1, 2], size=len(X_test))  # سیگنال تصادفی
         except ImportError:
             print("❌ xgboost نصب نیست — استفاده از سیگنال تصادفی")
