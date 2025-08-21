@@ -80,7 +80,7 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not 
+            if not data:
                 break
 
             # اضافه کردن داده‌ها
