@@ -6,31 +6,43 @@ import os
 from datetime import datetime
 
 def send_telegram(token, chat_id, text):
+    """
+    ارسال پیام به تلگرام با پشتیبانی از پیام‌های طولانی
+    """
     if not token or not chat_id:
         print("⚠️ توکن یا آی‌دی تلگرام وجود ندارد.")
         return
+
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     max_length = 4096
     parts = []
     current_part = ""
+
     for line in text.split('\n'):
-        if len(current_part) + len(line) + 1 > max_length:
+        line_length = len(line) + 1  # +1 برای \n
+        if len(current_part) + line_length > max_length:
             parts.append(current_part)
             current_part = line
         else:
             current_part += '\n' + line if current_part else line
+
     if current_part:
         parts.append(current_part)
-    for part in parts:
-        data = {"chat_id": chat_id, "text": part, "parse_mode": "Markdown"}
+
+    for i, part in enumerate(parts):
+        data = {
+            "chat_id": chat_id,
+            "text": part,
+            "parse_mode": "Markdown"
+        }
         try:
-            r = requests.post(url, data=data)
-            if r.status_code == 200:
-                print("✅ پیام ارسال شد.")
+            response = requests.post(url, data=data)
+            if response.status_code == 200:
+                print(f"✅ بخش {i+1}/{len(parts)} پیام به تلگرام ارسال شد.")
             else:
-                print(f"❌ خطا: {r.text}")
+                print(f"❌ خطا در ارسال بخش {i+1}: {response.text}")
         except Exception as e:
-            print(f"❌ خطای شبکه: {e}")
+            print(f"❌ خطای شبکه هنگام ارسال بخش {i+1}: {e}")
 
 def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
@@ -51,8 +63,8 @@ def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
     params = {
         'market': market,
         'type': interval,
-        'from': int(since_ms / 1000),
-        'to': int(until_ms / 1000)
+        'from': int(since_ms / 1000),  # ثانیه
+        'to': int(until_ms / 1000)     # ثانیه
     }
 
     try:
@@ -62,7 +74,7 @@ def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
             raw = data['data']
             ohlcv = []
             for item in raw:
-                timestamp = int(item[0]) * 1000  # ثانیه به میلی‌ثانیه
+                timestamp = int(item[0]) * 1000  # تبدیل ثانیه به میلی‌ثانیه
                 ohlcv.append([
                     timestamp,
                     float(item[1]),  # open
@@ -76,14 +88,14 @@ def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطا در دریافت داده از CoinEx: {data.get('message')}")
             return None
     except Exception as e:
-        print(f"❌ خطای شبکه: {e}")
+        print(f"❌ خطای شبکه یا پاسخ نامعتبر: {e}")
         return None
 
 def main():
     symbol = os.getenv("SYMBOL") or "BTC/USDT"
     timeframe = os.getenv("TIMEFRAME") or "1h"
-    since_str = os.getenv("SINCE") or "2025-01-01"
-    until_str = os.getenv("UNTIL") or "2025-08-21"
+    since_str = os.getenv("SINCE") or "2024-01-01"
+    until_str = os.getenv("UNTIL") or "2024-06-01"
     telegram_token = os.getenv("TELEGRAM_TOKEN")
     telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -104,17 +116,19 @@ def main():
     # دریافت داده از CoinEx
     try:
         data = fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not data:
-            report = "❌ هیچ داده‌ای از CoinEx دریافت نشد."
+        if not 
+            report = "❌ هیچ داده‌ای از CoinEx دریافت نشد. ممکن است نماد یا تایم‌فریم نامعتبر باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
         df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+        # فیلتر بازه زمانی
         df = df[(df['timestamp'] >= since_str) & (df['timestamp'] <= until_str)]
         if len(df) == 0:
-            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد."
+            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد. ممکن است بازه زمانی آینده باشد یا داده‌ای وجود نداشته باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -126,7 +140,7 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # محاسبه ATR و MA20
+    # محاسبه ATR
     df['tr'] = np.maximum(
         df['high'] - df['low'],
         np.maximum(
@@ -135,6 +149,8 @@ def main():
         )
     )
     df['atr'] = df['tr'].rolling(14).mean()
+
+    # محاسبه MA20
     df['ma20'] = df['close'].rolling(20).mean()
 
     # محاسبه RSI
@@ -144,11 +160,12 @@ def main():
     rs = gain / loss
     df['rsi'] = 100 - (100 / (1 + rs))
 
+    # حذف NaN
     df.dropna(inplace=True)
 
     # تولید سیگنال
     signals = []
-    last_signal = None
+    last_signal = None  # جلوگیری از تکرار سیگنال
 
     for i in range(len(df) - 1):
         row = df.iloc[i]
@@ -158,17 +175,17 @@ def main():
         ma20 = row['ma20']
         rsi = row['rsi']
 
-        # Long
+        # سیگنال Long: قیمت زیر MA20، RSI<30، کندل نزولی
         if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
             if last_signal != 'Long':
                 entry = close
                 sl = entry - 1.5 * atr
-                tp = entry + 3.0 * atr
+                tp = entry + 3.0 * atr  # نسبت 2:1
                 result = "TP" if next_row['high'] >= tp else "SL" if next_row['low'] <= sl else "در جریان"
                 signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
                 last_signal = 'Long'
 
-        # Short
+        # سیگنال Short: قیمت بالای MA20، RSI>70، کندل صعودی
         elif close > row['open'] and close > ma20 + 0.5 * atr and rsi > 70:
             if last_signal != 'Short':
                 entry = close
@@ -186,7 +203,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (با داده CoinEx)*
+📊 *گزارش بک‌تست معاملاتی (داده CoinEx)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
@@ -203,6 +220,7 @@ def main():
     else:
         report = "❌ هیچ سیگنالی تولید نشد."
 
+    # چاپ و ارسال گزارش
     print("\n" + report)
     send_telegram(telegram_token, telegram_chat_id, report)
 
