@@ -1,55 +1,71 @@
-name: AI Backtest System (Final)
+# .github/workflows/run.yml
+name: Backtest
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       symbol:
-        description: 'ارزها (با کاما)'
+        description: 'Symbol (e.g. BTC-USDT, ETH-USDT)'
         required: true
-        default: 'BTC-USDT,ETH-USDT'
-        type: string
+        default: 'BTC-USDT'
       timeframe:
-        description: 'تایم‌فریم'
+        description: 'Timeframe (e.g. 15m, 1h, 4h)'
         required: true
-        default: '15min'
-        type: choice
-        options:
-          - 1min
-          - 3min
-          - 15min
-          - 1hour
-          - 1day
+        default: '1h'
       start_date:
-        description: 'تاریخ شروع (YYYY-MM-DD)'
+        description: 'Start date (YYYY-MM-DD)'
         required: true
-        default: '2025-03-01'
-        type: string
+        default: '2024-01-01'
       end_date:
-        description: 'تاریخ پایان (YYYY-MM-DD)'
+        description: 'End date (YYYY-MM-DD)'
         required: true
-        default: '2025-04-01'
-        type: string
+        default: '2024-06-01'
 
 jobs:
   backtest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Miniconda
+        uses: conda-forge/setup-miniconda@v3
         with:
-          python-version: '3.10'
-      - name: Install dependencies
+          python-version: 3.10
+
+      - name: Create and activate environment
+        shell: bash -l {0}
         run: |
-          pip install -r requirements.txt
-      - name: Run with date range
+          conda env create -f environment.yml
+          conda activate trading-bot
+
+      - name: Show environment info
+        shell: bash -l {0}
+        run: |
+          conda activate trading-bot
+          python --version
+          python -c "import xgboost; print('✅ xgboost loaded')"
+          python -c "import tensorflow; print('✅ tensorflow loaded')"
+          python -c "import matplotlib; print('✅ matplotlib loaded')"
+
+      - name: Run backtest
+        shell: bash -l {0}
         env:
           INPUT_SYMBOL: ${{ github.event.inputs.symbol }}
           INPUT_TIMEFRAME: ${{ github.event.inputs.timeframe }}
           INPUT_START_DATE: ${{ github.event.inputs.start_date }}
           INPUT_END_DATE: ${{ github.event.inputs.end_date }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python main.py
+        run: |
+          conda activate trading-bot
+          python main.py
+
+      - name: Upload plots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          path: |
+            *.png
+            *.jpg
+          retention-days: 7
