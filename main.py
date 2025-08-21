@@ -19,7 +19,7 @@ def send_telegram(token, chat_id, text):
     current_part = ""
 
     for line in text.split('\n'):
-        line_length = len(line) + 1  # +1 برای \n
+        line_length = len(line) + 1
         if len(current_part) + line_length > max_length:
             parts.append(current_part)
             current_part = line
@@ -42,54 +42,77 @@ def send_telegram(token, chat_id, text):
             else:
                 print(f"❌ خطا در ارسال بخش {i+1}: {response.text}")
         except Exception as e:
-            print(f"❌ خطای شبکه هنگام ارسال بخش {i+1}: {e}")
+            print(f"❌ خطای شبکه: {e}")
 
 def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده OHLCV از API عمومی Binance
+    دریافت داده OHLCV از API عمومی Binance با پشتیبانی از Pagination
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
-    market = symbol.replace('/', '')
+    market = symbol.replace('/', '').upper()
 
-    # مپ تایم‌فریم به Binance
+    # مپ تایم‌فریم
     tf_map = {
         '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
         '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
         '6h': '6h', '12h': '12h', '1d': '1d', '1w': '1w'
     }
-    interval = tf_map.get(timeframe, '1h')
+    interval = tf_map.get(timeframe.lower(), '1h')
 
     url = "https://api.binance.com/api/v3/klines"
-    params = {
-        'symbol': market,
-        'interval': interval,
-        'startTime': since_ms,
-        'endTime': until_ms,
-        'limit': 1000
-    }
+    all_data = []
+    limit = 1000
+    fetch_since = since_ms
 
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+    while fetch_since < until_ms:
+        params = {
+            'symbol': market,
+            'interval': interval,
+            'startTime': fetch_since,
+            'endTime': until_ms,
+            'limit': limit
+        }
 
-        if not data:
-            return None
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code != 200:
+                print(f"❌ خطای HTTP {response.status_code}: {response.text}")
+                break
 
-        ohlcv = []
-        for item in data:
-            ohlcv.append([
-                int(item[0]),           # timestamp
-                float(item[1]),         # open
-                float(item[2]),         # high
-                float(item[3]),         # low
-                float(item[4]),         # close
-                float(item[5])          # volume
-            ])
-        return ohlcv
-    except Exception as e:
-        print(f"❌ خطای دریافت داده از Binance: {e}")
+            data = response.json()
+            if not 
+                break
+
+            # اضافه کردن داده‌ها
+            all_data.extend(data)
+
+            # به‌روزرسانی زمان برای درخواست بعدی
+            fetch_since = data[-1][0] + 1  # آخرین زمان + 1 میلی‌ثانیه
+
+            # اگر کمتر از 1000 کندل آمد، متوقف شو
+            if len(data) < limit:
+                break
+
+        except Exception as e:
+            print(f"❌ خطای شبکه: {e}")
+            break
+
+    if not all_
         return None
+
+    # تبدیل به DataFrame
+    ohlcv = []
+    for item in all_
+        ohlcv.append([
+            int(item[0]),
+            float(item[1]),
+            float(item[2]),
+            float(item[3]),
+            float(item[4]),
+            float(item[5])
+        ])
+
+    return ohlcv
 
 def main():
     symbol = os.getenv("SYMBOL") or "BTC/USDT"
@@ -116,8 +139,8 @@ def main():
     # دریافت داده از Binance
     try:
         data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not data:
-            report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد یا تایم‌فریم نامعتبر باشد."
+        if not 
+            report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد اشتباه باشد یا بازه زمانی نامعتبر."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -128,7 +151,7 @@ def main():
         # فیلتر بازه زمانی
         df = df[(df['timestamp'] >= since_str) & (df['timestamp'] <= until_str)]
         if len(df) == 0:
-            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد. ممکن است بازه زمانی آینده باشد یا داده‌ای وجود نداشته باشد."
+            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد. ممکن است بازه زمانی آینده باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -165,7 +188,7 @@ def main():
 
     # تولید سیگنال
     signals = []
-    last_signal = None  # جلوگیری از تکرار سیگنال
+    last_signal = None
 
     for i in range(len(df) - 1):
         row = df.iloc[i]
@@ -175,17 +198,17 @@ def main():
         ma20 = row['ma20']
         rsi = row['rsi']
 
-        # سیگنال Long: قیمت زیر MA20، RSI<30، کندل نزولی
+        # Long
         if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
             if last_signal != 'Long':
                 entry = close
                 sl = entry - 1.5 * atr
-                tp = entry + 3.0 * atr  # نسبت 2:1
+                tp = entry + 3.0 * atr
                 result = "TP" if next_row['high'] >= tp else "SL" if next_row['low'] <= sl else "در جریان"
                 signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
                 last_signal = 'Long'
 
-        # سیگنال Short: قیمت بالای MA20، RSI>70، کندل صعودی
+        # Short
         elif close > row['open'] and close > ma20 + 0.5 * atr and rsi > 70:
             if last_signal != 'Short':
                 entry = close
@@ -220,7 +243,6 @@ def main():
     else:
         report = "❌ هیچ سیگنالی تولید نشد."
 
-    # چاپ و ارسال گزارش
     print("\n" + report)
     send_telegram(telegram_token, telegram_chat_id, report)
 
