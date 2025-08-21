@@ -2,9 +2,24 @@
 name: Backtest
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'Symbol (e.g. BTC-USDT, ETH-USDT)'
+        required: true
+        default: 'BTC-USDT'
+      timeframe:
+        description: 'Timeframe (e.g. 15m, 1h, 4h)'
+        required: true
+        default: '1h'
+      start_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: true
+        default: '2024-01-01'
+      end_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: true
+        default: '2024-06-01'
 
 jobs:
   backtest:
@@ -25,16 +40,23 @@ jobs:
           conda env create -f environment.yml
           conda activate trading-bot
 
-      - name: Show environment
+      - name: Show environment info
         shell: bash -l {0}
         run: |
           conda activate trading-bot
           python --version
-          python -c "import xgboost; print('✅ xgboost وارد شد')"
-          python -c "import matplotlib; print('✅ matplotlib وارد شد')"
+          python -c "import xgboost; print('✅ xgboost loaded')"
+          python -c "import matplotlib; print('✅ matplotlib loaded')"
 
       - name: Run backtest
         shell: bash -l {0}
+        env:
+          INPUT_SYMBOL: ${{ github.event.inputs.symbol }}
+          INPUT_TIMEFRAME: ${{ github.event.inputs.timeframe }}
+          INPUT_START_DATE: ${{ github.event.inputs.start_date }}
+          INPUT_END_DATE: ${{ github.event.inputs.end_date }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           conda activate trading-bot
           python main.py
