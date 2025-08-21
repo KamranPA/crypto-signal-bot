@@ -1,49 +1,47 @@
-import requests
+# data_fetcher.py
 import pandas as pd
+import requests
+import time
 from datetime import datetime
+import ccxt
 
-def fetch_kucoin(symbol, timeframe="15min", start_date=None, end_date=None):
-    def date_to_ts(date_str):
-        try:
-            return int(datetime.strptime(date_str, "%Y-%m-%d").timestamp())
-        except Exception as e:
-            print(f'❌ فرمت تاریخ نامعتبر: {date_str}')
-            return None
-
-    url = "https://api.kucoin.com/api/v1/market/candles"
-    params = {
-        "symbol": symbol,
-        "type": timeframe
-    }
-
-    if start_date:
-        ts = date_to_ts(start_date)
-        if ts:
-            params["startAt"] = ts
-    if end_date:
-        ts = date_to_ts(end_date)
-        if ts:
-            params["endAt"] = ts
+def fetch_kucoin(symbol, timeframe, start_date, end_date):
+    """
+    دریافت داده کندل‌های تاریخی از صرافی KuCoin
+    """
+    exchange = ccxt.kucoin()
 
     try:
-        response = requests.get(url, params=params, timeout=10)
-        data = response.json()
-        if data["code"] == "200000":
-            if not data["data"]:
-                print(f'⚠️ داده‌ای برای {symbol} در بازه زمانی یافت نشد.')
-                return None
+        since = exchange.parse8601(f"{start_date}T00:00:00Z")
+        limit = 1000  # حداکثر تعداد کندل در هر درخواست
+        all_ohlcv = []
 
-            df = pd.DataFrame(data["data"],
-                              columns=["timestamp", "open", "close", "high", "low", "volume", "turnover"])
-            df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit='s')
-            df.set_index("timestamp", inplace=True)
-            for col in ["open", "close", "high", "low", "volume"]:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            df.sort_index(inplace=True)
-            return df
-        else:
-            print(f'❌ خطای KuCoin: {data["msg"]}')
+        while since < exchange.parse8601(f"{end_date}T00:00:00Z"):
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
+            if not ohlcv:
+                break
+            all_ohlcv.extend(ohlcv)
+            since = ohlcv[-1][0] + 1
+            time.sleep(exchange.rateLimit / 1000)
+
+        if not all_ohlcv:
+            print(f"❌ داده‌ای برای {symbol} یافت نشد.")
             return None
+
+        df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        df.sort_index(inplace=True)
+
+        # فیلتر تاریخ
+        df = df[(df.index >= start_date) & (df.index <= end_date)]
+
+        if df.empty:
+            print(f"❌ داده‌ای در بازه زمانی برای {symbol} وجود ندارد.")
+            return None
+
+        return df
+
     except Exception as e:
-        print(f'❌ خطا در دریافت داده: {e}')
+        print(f"❌ خطا در دریافت داده از KuCoin: {e}")
         return None
