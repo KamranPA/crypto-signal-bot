@@ -73,7 +73,7 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
         response.raise_for_status()
         data = response.json()
 
-        if not 
+        if not data:
             return None
 
         ohlcv = []
