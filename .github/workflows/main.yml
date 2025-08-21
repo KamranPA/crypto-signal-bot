@@ -62,7 +62,7 @@ jobs:
           python main.py
 
       - name: Upload plots
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # ✅ تغییر به v4
         if: always()
         with:
           path: |
