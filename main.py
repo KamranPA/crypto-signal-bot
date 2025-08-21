@@ -1,8 +1,7 @@
 # main.py
-import ccxt
+import requests
 import pandas as pd
 import numpy as np
-import requests
 import os
 from datetime import datetime
 
@@ -33,11 +32,58 @@ def send_telegram(token, chat_id, text):
         except Exception as e:
             print(f"❌ خطای شبکه: {e}")
 
+def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
+    """
+    دریافت داده OHLCV از API عمومی CoinEx
+    """
+    # تبدیل نماد: BTC/USDT → btcusdt
+    market = symbol.replace('/', '').lower()
+
+    # مپ تایم‌فریم به CoinEx
+    tf_map = {
+        '1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min',
+        '30m': '30min', '1h': '1hour', '2h': '2hour', '4h': '4hour',
+        '6h': '6hour', '12h': '12hour', '1d': '1day', '1w': '1week'
+    }
+    interval = tf_map.get(timeframe, '1hour')
+
+    url = "https://api.coinex.com/v1/market/kline"
+    params = {
+        'market': market,
+        'type': interval,
+        'from': int(since_ms / 1000),
+        'to': int(until_ms / 1000)
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+        if data.get('code') == 0:
+            raw = data['data']
+            ohlcv = []
+            for item in raw:
+                timestamp = int(item[0]) * 1000  # ثانیه به میلی‌ثانیه
+                ohlcv.append([
+                    timestamp,
+                    float(item[1]),  # open
+                    float(item[2]),  # high
+                    float(item[3]),  # low
+                    float(item[4]),  # close
+                    float(item[5])   # volume
+                ])
+            return ohlcv
+        else:
+            print(f"❌ خطا در دریافت داده از CoinEx: {data.get('message')}")
+            return None
+    except Exception as e:
+        print(f"❌ خطای شبکه: {e}")
+        return None
+
 def main():
     symbol = os.getenv("SYMBOL") or "BTC/USDT"
     timeframe = os.getenv("TIMEFRAME") or "1h"
-    since_str = os.getenv("SINCE") or "2024-01-01"
-    until_str = os.getenv("UNTIL") or "2024-06-01"
+    since_str = os.getenv("SINCE") or "2025-01-01"
+    until_str = os.getenv("UNTIL") or "2025-08-21"
     telegram_token = os.getenv("TELEGRAM_TOKEN")
     telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -55,20 +101,16 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده
+    # دریافت داده از CoinEx
     try:
-        exchange = ccxt.kucoin()
-        all_data = []
-        fetch_until = since_ms
-        while fetch_until < until_ms + 86400000:
-            data = exchange.fetch_ohlcv(symbol, timeframe, since=fetch_until, limit=1000)
-            if not data:
-                break
-            all_data.extend(data)
-            fetch_until = data[-1][0] + 1
-            if data[-1][0] > until_ms:
-                break
-        df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        data = fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms)
+        if not data:
+            report = "❌ هیچ داده‌ای از CoinEx دریافت نشد."
+            print(report)
+            send_telegram(telegram_token, telegram_chat_id, report)
+            return
+
+        df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df[(df['timestamp'] >= since_str) & (df['timestamp'] <= until_str)]
         if len(df) == 0:
@@ -76,14 +118,15 @@ def main():
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
-        print(f"✅ {len(df)} کندل دریافت شد.")
+
+        print(f"✅ {len(df)} کندل دریافت شد از CoinEx.")
     except Exception as e:
-        error_msg = f"❌ خطای دریافت داده: {e}"
+        error_msg = f"❌ خطای پردازش داده: {e}"
         print(error_msg)
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # محاسبه ATR
+    # محاسبه ATR و MA20
     df['tr'] = np.maximum(
         df['high'] - df['low'],
         np.maximum(
@@ -92,8 +135,6 @@ def main():
         )
     )
     df['atr'] = df['tr'].rolling(14).mean()
-
-    # محاسبه MA20
     df['ma20'] = df['close'].rolling(20).mean()
 
     # محاسبه RSI
@@ -103,12 +144,11 @@ def main():
     rs = gain / loss
     df['rsi'] = 100 - (100 / (1 + rs))
 
-    # حذف NaN
     df.dropna(inplace=True)
 
     # تولید سیگنال
     signals = []
-    last_signal = None  # برای جلوگیری از تکرار
+    last_signal = None
 
     for i in range(len(df) - 1):
         row = df.iloc[i]
@@ -118,19 +158,19 @@ def main():
         ma20 = row['ma20']
         rsi = row['rsi']
 
-        # سیگنال Long: زیر MA20، RSI<30، کندل نزولی
+        # Long
         if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
-            if last_signal != 'Long':  # جلوگیری از تکرار
+            if last_signal != 'Long':
                 entry = close
                 sl = entry - 1.5 * atr
-                tp = entry + 3.0 * atr  # نسبت 2:1
+                tp = entry + 3.0 * atr
                 result = "TP" if next_row['high'] >= tp else "SL" if next_row['low'] <= sl else "در جریان"
                 signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
                 last_signal = 'Long'
 
-        # سیگنال Short: بالای MA20، RSI>70، کندل صعودی
+        # Short
         elif close > row['open'] and close > ma20 + 0.5 * atr and rsi > 70:
-            if last_signal != 'Short':  # جلوگیری از تکرار
+            if last_signal != 'Short':
                 entry = close
                 sl = entry + 1.5 * atr
                 tp = entry - 3.0 * atr
@@ -146,7 +186,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی*
+📊 *گزارش بک‌تست معاملاتی (با داده CoinEx)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
