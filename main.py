@@ -1,78 +1,78 @@
 # main.py
-import os
+import ccxt
 import pandas as pd
+from datetime import datetime
+import argparse
+
+from utils.data_loader import fetch_ohlcv
+from strategy.technical import add_indicators
+from strategy.fusion import generate_signal
+from risk.money_management import calculate_sl_tp
+from backtest.engine import run_backtest
+from backtest.report import print_summary
 
 def main():
-    symbol_input = os.getenv("INPUT_SYMBOL", "BTC-USDT")
-    timeframe = os.getenv("INPUT_TIMEFRAME", "1h")
-    start_date = os.getenv("INPUT_START_DATE")
-    end_date = os.getenv("INPUT_END_DATE")
-    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+    print("🚀 سیستم بک‌تست معاملاتی دوطرفه (Long/Short) - ارزهای دیجیتال")
+    print("-" * 60)
 
-    if not start_date or not end_date:
-        print('❌ لطفاً تاریخ شروع و پایان را وارد کنید.')
-        return
+    # ورودی کاربر
+    symbol = input("🔸 نماد (مثلاً BTC/USDT): ").strip().upper()
+    timeframe = input("⏰ تایم‌فریم (مثلاً 15m): ").strip()
+    since = input("📅 تاریخ شروع (مثلاً 2024-01-01): ").strip()
+    risk_reward_ratio = float(input("🎯 نسبت ریسک به ریوارد (حداقل 2): ") or "2")
 
+    # تنظیم حداقل 2:1
+    if risk_reward_ratio < 2:
+        print("⚠️  نسبت ریسک به ریوارد باید حداقل 2 باشد. مقدار 2 تنظیم شد.")
+        risk_reward_ratio = 2
+
+    print(f"\n📥 در حال دریافت داده‌ها برای {symbol} در تایم‌فریم {timeframe} از {since}...")
+    
     try:
-        pd.to_datetime(start_date)
-        pd.to_datetime(end_date)
-    except:
-        print('❌ فرمت تاریخ نامعتبر است.')
-        return
+        # دریافت داده
+        df = fetch_ohlcv(symbol, timeframe, since)
+        df = add_indicators(df)
+        
+        # تولید سیگنال
+        signals = []
+        for i in range(len(df) - 1):
+            row = df.iloc[i]
+            next_close = df.iloc[i + 1]['close']
+            signal = generate_signal(row)
+            if signal != 0:
+                sl, tp = calculate_sl_tp(row['close'], row['atr'], signal, risk_reward_ratio)
+                result = {
+                    'timestamp': row['timestamp'],
+                    'price': row['close'],
+                    'signal': 'Long' if signal == 1 else 'Short',
+                    'sl': sl,
+                    'tp': tp,
+                    'reached': None
+                }
+                # بررسی آیا حد سود/ضرر در کندل بعدی لمس شده
+                high, low = next_close, next_close
+                if i + 2 < len(df):
+                    high = df.iloc[i + 1:i + 3]['high'].max()
+                    low = df.iloc[i + 1:i + 3]['low'].min()
 
-    symbols = [s.strip() for s in symbol_input.split(",") if s.strip()]
-    if not symbols:
-        print('❌ هیچ ارزی وارد نشده است.')
-        return
+                if signal == 1:  # Long
+                    if low <= sl:
+                        result['reached'] = 'SL'
+                    elif high >= tp:
+                        result['reached'] = 'TP'
+                elif signal == -1:  # Short
+                    if high >= sl:
+                        result['reached'] = 'SL'
+                    elif low <= tp:
+                        result['reached'] = 'TP'
 
-    print(f'📅 بک‌تست: {start_date} → {end_date}')
-    print(f'⏱ تایم‌فریم: {timeframe}')
-    print(f'🪙 ارزها: {symbols}')
+                signals.append(result)
 
-    results = []
+        # گزارش
+        print_summary(signals)
 
-    try:
-        from data_fetcher import fetch_kucoin
-        from features import add_features
-        from backtester import Backtester
-        from telegram_bot import send_telegram_report
-    except ImportError as e:
-        print(f"❌ خطای وارد کردن ماژول: {e}")
-        return
-
-    for symbol in symbols:
-        print(f'📥 دریافت داده: {symbol}')
-        df = fetch_kucoin(symbol, timeframe, start_date, end_date)
-
-        if df is None or len(df) < 50:
-            print(f'⚠️ داده کافی برای {symbol} وجود ندارد.')
-            continue
-
-        if df.isna().any().any():
-            print(f'⚠️ داده‌های {symbol} دارای nan هستند.')
-            continue
-
-        df = add_features(df)
-        if len(df) < 10:
-            print(f'⚠️ داده پس از پیش‌پردازش کافی نیست: {symbol}')
-            continue
-
-        if df.isna().any().any():
-            print(f'⚠️ داده‌های {symbol} پس از افزودن ویژگی‌ها دارای nan است.')
-            continue
-
-        backtester = Backtester(symbol, df)
-        result = backtester.run()
-        results.append(result)
-
-    if results and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
-        send_telegram_report(results, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
-        print('✅ بک‌تست کامل شد و گزارش ارسال شد.')
-    elif results:
-        print('✅ بک‌تست کامل شد، اما ارسال تلگرام غیرفعال است.')
-    else:
-        print('❌ هیچ بک‌تستی انجام نشد.')
+    except Exception as e:
+        print(f"❌ خطای سیستم: {e}")
 
 if __name__ == "__main__":
     main()
