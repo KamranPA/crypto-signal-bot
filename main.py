@@ -62,7 +62,7 @@ def main():
         fetch_until = since_ms
         while fetch_until < until_ms + 86400000:
             data = exchange.fetch_ohlcv(symbol, timeframe, since=fetch_until, limit=1000)
-            if not 
+            if not data:
                 break
             all_data.extend(data)
             fetch_until = data[-1][0] + 1
