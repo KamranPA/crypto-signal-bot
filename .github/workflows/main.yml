@@ -26,10 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3  # ✅ تغییر به v3
         with:
           auto-update-conda: true
           python-version: 3.10
@@ -62,7 +62,7 @@ jobs:
           python main.py
 
       - name: Upload plots
-        uses: actions/upload-artifact@v4  # ✅ تغییر به v4
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           path: |
