@@ -1,0 +1,49 @@
+# .github/workflows/main.yml
+name: Backtest
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+          python-version: 3.10
+
+      - name: Create and activate environment
+        shell: bash -l {0}
+        run: |
+          conda env create -f environment.yml
+          conda activate trading-bot
+
+      - name: Show environment
+        shell: bash -l {0}
+        run: |
+          conda activate trading-bot
+          python --version
+          python -c "import xgboost; print('✅ xgboost وارد شد')"
+          python -c "import matplotlib; print('✅ matplotlib وارد شد')"
+
+      - name: Run backtest
+        shell: bash -l {0}
+        run: |
+          conda activate trading-bot
+          python main.py
+
+      - name: Upload plots
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          path: |
+            *.png
+            *.jpg
+          retention-days: 7
