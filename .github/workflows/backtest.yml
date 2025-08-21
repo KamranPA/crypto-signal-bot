@@ -1,0 +1,135 @@
+name: 📊 بک‌تست دستی ارزهای دیجیتال
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: '🔹 نماد (مثلاً BTC/USDT)'
+        required: true
+        default: 'BTC/USDT'
+      timeframe:
+        description: '⏰ تایم‌فریم (مثلاً 15m, 1h)'
+        required: true
+        default: '15m'
+      since:
+        description: '📅 تاریخ شروع (فرمت: YYYY-MM-DD)'
+        required: true
+        default: '2024-01-01'
+
+jobs:
+  run-backtest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 دریافت کد
+        uses: actions/checkout@v4
+
+      - name: 🐍 نصب پایتون
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 📦 نصب کتابخانه‌ها
+        run: |
+          pip install ccxt pandas numpy
+
+      - name: 🧪 اجرای بک‌تست
+        env:
+          SYMBOL: ${{ inputs.symbol }}
+          TIMEFRAME: ${{ inputs.timeframe }}
+          SINCE: ${{ inputs.since }}
+        run: |
+          # ایجاد فایل main.py به صورت پویا (برای نمونه ساده)
+          cat > main.py << 'EOF'
+import ccxt
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import os
+
+# دریافت ورودی از متغیرهای محیطی
+symbol = os.getenv('SYMBOL') or 'BTC/USDT'
+timeframe = os.getenv('TIMEFRAME') or '15m'
+since_str = os.getenv('SINCE') or '2024-01-01'
+
+print(f"🚀 شروع بک‌تست: {symbol} | {timeframe} | از {since_str}")
+
+# تبدیل تاریخ
+try:
+    since_dt = datetime.strptime(since_str, "%Y-%m-%d")
+    since_ms = int(since_dt.timestamp() * 1000)
+except Exception as e:
+    print(f"❌ خطای تاریخ: {e}")
+    exit()
+
+# دریافت داده
+try:
+    exchange = ccxt.kucoin()
+    data = exchange.fetch_ohlcv(symbol, timeframe, since=since_ms, limit=500)
+    if len(data) == 0:
+        print("❌ داده‌ای یافت نشد. نماد یا تایم‌فریم اشتباه است.")
+        exit()
+    df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+except Exception as e:
+    print(f"❌ خطای دریافت داده: {e}")
+    exit()
+
+# محاسبه ATR
+df['tr'] = np.maximum(
+    df['high'] - df['low'],
+    np.maximum(
+        abs(df['high'] - df['close'].shift(1)),
+        abs(df['low'] - df['close'].shift(1))
+    )
+)
+df['atr'] = df['tr'].rolling(14).mean()
+df.dropna(inplace=True)
+
+# سیگنال‌ها
+signals = []
+for i in range(len(df) - 1):
+    row = df.iloc[i]
+    next_row = df.iloc[i + 1]
+
+    # Long: قیمت پایین‌تر از میانگین و کندل نزولی
+    if row['close'] < row['close'].rolling(20).mean() - 0.5 * row['atr'] and row['close'] < row['open']:
+        entry = row['close']
+        sl = entry - 1.5 * row['atr']
+        tp = entry + 3.0 * row['atr']  # نسبت 2:1
+        result = "TP" if next_row['high'] >= tp else "SL" if next_row['low'] <= sl else "جست‌وجو"
+        signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
+
+    # Short: قیمت بالای میانگین و کندل صعودی
+    elif row['close'] > row['close'].rolling(20).mean() + 0.5 * row['atr'] and row['close'] > row['open']:
+        entry = row['close']
+        sl = entry + 1.5 * row['atr']
+        tp = entry - 3.0 * row['atr']
+        result = "TP" if next_row['low'] <= tp else "SL" if next_row['high'] >= sl else "جست‌وجو"
+        signals.append(('Short', round(entry, 2), round(sl, 2), round(tp, 2), result))
+
+# گزارش
+if signals:
+    total = len(signals)
+    tp_count = len([s for s in signals if s[4] == 'TP'])
+    sl_count = len([s for s in signals if s[4] == 'SL'])
+    win_rate = (tp_count / total) * 100 if total > 0 else 0
+
+    print("\n📊 گزارش بک‌تست")
+    print("-" * 60)
+    print(f"نماد: {symbol} | تایم‌فریم: {timeframe}")
+    print(f"تعداد کل سیگنال‌ها: {total}")
+    print(f"حد سود (TP): {tp_count}")
+    print(f"حد ضرر (SL): {sl_count}")
+    print(f"نرخ برد: {win_rate:.1f}%")
+    print(f"نسبت ریسک به ریوارد: 1:2")
+    print("-" * 60)
+    for sig in signals:
+        print(f"[{sig[0]}] ورود: {sig[1]} | SL: {sig[2]} | TP: {sig[3]} | نتیجه: {sig[4]}")
+else:
+    print("❌ هیچ سیگنالی تولید نشد.")
+
+EOF
+
+          # اجرای اسکریپت
+          python main.pyت
