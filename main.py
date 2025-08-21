@@ -44,51 +44,51 @@ def send_telegram(token, chat_id, text):
         except Exception as e:
             print(f"❌ خطای شبکه هنگام ارسال بخش {i+1}: {e}")
 
-def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
+def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده OHLCV از API عمومی CoinEx
+    دریافت داده OHLCV از API عمومی Binance
     """
-    # تبدیل نماد: BTC/USDT → btcusdt
-    market = symbol.replace('/', '').lower()
+    # تبدیل نماد: BTC/USDT → BTCUSDT
+    market = symbol.replace('/', '')
 
-    # مپ تایم‌فریم به CoinEx
+    # مپ تایم‌فریم به Binance
     tf_map = {
-        '1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min',
-        '30m': '30min', '1h': '1hour', '2h': '2hour', '4h': '4hour',
-        '6h': '6hour', '12h': '12hour', '1d': '1day', '1w': '1week'
+        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
+        '6h': '6h', '12h': '12h', '1d': '1d', '1w': '1w'
     }
-    interval = tf_map.get(timeframe, '1hour')
+    interval = tf_map.get(timeframe, '1h')
 
-    url = "https://api.coinex.com/v1/market/kline"
+    url = "https://api.binance.com/api/v3/klines"
     params = {
-        'market': market,
-        'type': interval,
-        'from': int(since_ms / 1000),  # ثانیه
-        'to': int(until_ms / 1000)     # ثانیه
+        'symbol': market,
+        'interval': interval,
+        'startTime': since_ms,
+        'endTime': until_ms,
+        'limit': 1000
     }
 
     try:
         response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
         data = response.json()
-        if data.get('code') == 0:
-            raw = data['data']
-            ohlcv = []
-            for item in raw:
-                timestamp = int(item[0]) * 1000  # تبدیل ثانیه به میلی‌ثانیه
-                ohlcv.append([
-                    timestamp,
-                    float(item[1]),  # open
-                    float(item[2]),  # high
-                    float(item[3]),  # low
-                    float(item[4]),  # close
-                    float(item[5])   # volume
-                ])
-            return ohlcv
-        else:
-            print(f"❌ خطا در دریافت داده از CoinEx: {data.get('message')}")
+
+        if not 
             return None
+
+        ohlcv = []
+        for item in data:
+            ohlcv.append([
+                int(item[0]),           # timestamp
+                float(item[1]),         # open
+                float(item[2]),         # high
+                float(item[3]),         # low
+                float(item[4]),         # close
+                float(item[5])          # volume
+            ])
+        return ohlcv
     except Exception as e:
-        print(f"❌ خطای شبکه یا پاسخ نامعتبر: {e}")
+        print(f"❌ خطای دریافت داده از Binance: {e}")
         return None
 
 def main():
@@ -113,11 +113,11 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده از CoinEx
+    # دریافت داده از Binance
     try:
-        data = fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not data:
-            report = "❌ هیچ داده‌ای از CoinEx دریافت نشد. ممکن است نماد یا تایم‌فریم نامعتبر باشد."
+        data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
+        if not 
+            report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد یا تایم‌فریم نامعتبر باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -133,7 +133,7 @@ def main():
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل دریافت شد از CoinEx.")
+        print(f"✅ {len(df)} کندل دریافت شد از Binance.")
     except Exception as e:
         error_msg = f"❌ خطای پردازش داده: {e}"
         print(error_msg)
@@ -203,7 +203,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (داده CoinEx)*
+📊 *گزارش بک‌تست معاملاتی (داده Binance)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
