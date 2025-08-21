@@ -1,5 +1,26 @@
 # backtester.py — نسخه قدیمی‌تر (اولین نسخه عملیاتی)
+# backtest/report.py
 
+def print_summary(signals):
+    if not signals:
+        print("❌ هیچ سیگنالی تولید نشد.")
+        return
+
+    total = len(signals)
+    tp_count = len([s for s in signals if s['reached'] == 'TP'])
+    sl_count = len([s for s in signals if s['reached'] == 'SL'])
+    win_rate = (tp_count / total) * 100 if total > 0 else 0
+
+    print("\n📊 گزارش بک‌تست")
+    print("-" * 40)
+    print(f"تعداد کل معاملات: {total}")
+    print(f"تعداد رسیدن به حد سود (TP): {tp_count}")
+    print(f"تعداد رسیدن به حد ضرر (SL): {sl_count}")
+    print(f"نرخ برد (Win Rate): {win_rate:.1f}%")
+    print(f"نسبت ریسک به ریوارد: 1:{'2.0'} (حداقل)")
+    
+    for sig in signals:
+        print(f"⏱ {sig['timestamp']} | {sig['signal']} | ورود: {sig['price']} | SL: {sig['sl']} | TP: {sig['tp']} | نتیجه: {sig['reached']}")
 import pandas as pd
 import numpy as np
 from models import train_xgboost, prepare_data_for_xgboost, train_lstm, prepare_data_for_lstm
