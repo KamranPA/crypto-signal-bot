@@ -1,0 +1,31 @@
+name: 🚀 اجرای دستی بک‌تست
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: '🔸 نماد (مثلاً BTC/USDT)'
+        required: true
+        default: 'BTC/USDT'
+      timeframe:
+        description: '⏰ تایم‌فریم (مثلاً 15m)'
+        required: true
+        default: '15m'
+      since:
+        description: '📅 تاریخ شروع (YYYY-MM-DD)'
+        required: true
+        default: '2024-01-01'
+      until:
+        description: '📆 تاریخ پایان (YYYY-MM-DD)'
+        required: true
+        default: '2024-06-01'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: تست اجرا
+        run: |
+          echo "✅ اجرا شد!"
+          echo "نماد: ${{ inputs.symbol }}"
+          echo "بازه: ${{ inputs.since }} تا ${{ inputs.until }}"
