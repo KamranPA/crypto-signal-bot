@@ -1,86 +1,71 @@
-# main.py — نسخه نهایی با مدیریت خطا
+# .github/workflows/main.yml
+name: Backtest
 
-import os
-import pandas as pd
-import numpy as np
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'Symbol (e.g. BTC-USDT, ETH-USDT)'
+        required: true
+        default: 'BTC-USDT'
+      timeframe:
+        description: 'Timeframe (e.g. 15m, 1h, 4h)'
+        required: true
+        default: '1h'
+      start_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: true
+        default: '2024-01-01'
+      end_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: true
+        default: '2024-06-01'
 
-def main():
-    symbol_input = os.getenv("INPUT_SYMBOL", "BTC-USDT")
-    timeframe = os.getenv("INPUT_TIMEFRAME", "15min")
-    start_date = os.getenv("INPUT_START_DATE")
-    end_date = os.getenv("INPUT_END_DATE")
-    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    # بررسی تاریخ
-    if not start_date or not end_date:
-        print('❌ لطفاً تاریخ شروع و پایان را وارد کنید.')
-        return
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3  # ✅ تغییر به v3
+        with:
+          auto-update-conda: true
+          python-version: 3.10
 
-    try:
-        pd.to_datetime(start_date)
-        pd.to_datetime(end_date)
-    except Exception as e:
-        print(f'❌ فرمت تاریخ نامعتبر است. فرمت صحیح: YYYY-MM-DD')
-        return
+      - name: Create and activate environment
+        shell: bash -l {0}
+        run: |
+          conda env create -f environment.yml
+          conda activate trading-bot
 
-    # پردازش ارزها
-    symbols = [s.strip() for s in symbol_input.split(",") if s.strip()]
-    if not symbols:
-        print('❌ هیچ ارزی وارد نشده است.')
-        return
+      - name: Show environment info
+        shell: bash -l {0}
+        run: |
+          conda activate trading-bot
+          python --version
+          python -c "import xgboost; print('✅ xgboost loaded')"
+          python -c "import matplotlib; print('✅ matplotlib loaded')"
 
-    print(f'📅 بک‌تست: {start_date} → {end_date}')
-    print(f'⏱ تایم‌فریم: {timeframe}')
-    print(f'🪙 ارزها: {symbols}')
+      - name: Run backtest
+        shell: bash -l {0}
+        env:
+          INPUT_SYMBOL: ${{ github.event.inputs.symbol }}
+          INPUT_TIMEFRAME: ${{ github.event.inputs.timeframe }}
+          INPUT_START_DATE: ${{ github.event.inputs.start_date }}
+          INPUT_END_DATE: ${{ github.event.inputs.end_date }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          conda activate trading-bot
+          python main.py
 
-    results = []
-
-    # تست وارد کردن ماژول‌ها
-    try:
-        from data_fetcher import fetch_kucoin
-        from features import add_features
-        from backtester import Backtester
-        from telegram_bot import send_telegram_report
-    except ImportError as e:
-        print(f"❌ خطای وارد کردن ماژول: {e}")
-        return
-
-    for symbol in symbols:
-        print(f'📥 دریافت داده: {symbol}')
-        df = fetch_kucoin(symbol, timeframe, start_date, end_date)
-
-        if df is None or len(df) < 50:
-            print(f'⚠️ داده کافی برای {symbol} وجود ندارد.')
-            continue
-
-        if df.isna().any().any():
-            print(f'⚠️ داده‌های {symbol} دارای nan هستند.')
-            continue
-
-        # افزودن ویژگی‌ها
-        df = add_features(df)
-        if len(df) < 10:
-            print(f'⚠️ داده پس از پیش‌پردازش کافی نیست: {symbol}')
-            continue
-
-        if df.isna().any().any():
-            print(f'⚠️ داده‌های {symbol} پس از افزودن ویژگی‌ها دارای nan است.')
-            continue
-
-        # اجرای بک‌تست
-        backtester = Backtester(symbol, df)
-        result = backtester.run()
-        results.append(result)
-
-    # ارسال گزارش
-    if results and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
-        send_telegram_report(results, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
-        print('✅ بک‌تست کامل شد و گزارش ارسال شد.')
-    elif results:
-        print('✅ بک‌تست کامل شد، اما ارسال تلگرام غیرفعال است.')
-    else:
-        print('❌ هیچ بک‌تستی انجام نشد.')
-
-if __name__ == "__main__":
-    main()
+      - name: Upload plots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          path: |
+            *.png
+            *.jpg
+          retention-days: 7
