@@ -1,4 +1,4 @@
-name: 🚀 اجرای دستی بک‌تست
+name: 🚀 بک‌تست دستی
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
       timeframe:
         description: '⏰ تایم‌فریم (مثلاً 15m)'
         required: true
-        default: '15m'
+        default: '1h'
       since:
         description: '📅 تاریخ شروع (YYYY-MM-DD)'
         required: true
@@ -21,9 +21,8 @@ on:
         default: '2024-06-01'
 
 jobs:
-  run-backtest:
+  backtest:
     runs-on: ubuntu-latest
-
     steps:
       - name: 📥 دریافت کد
         uses: actions/checkout@v4
@@ -33,151 +32,17 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 📦 نصب کتابخانه‌ها
+      - name: 📦 نصب وابستگی‌ها
         run: |
           pip install ccxt pandas numpy requests
 
-      - name: 🧪 اجرای بک‌تست + ارسال به تلگرام
+      - name: 🏃 اجرای بک‌تست
         env:
           SYMBOL: ${{ inputs.symbol }}
           TIMEFRAME: ${{ inputs.timeframe }}
           SINCE: ${{ inputs.since }}
           UNTIL: ${{ inputs.until }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}  # اضافه کن!
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          # ایجاد main.py
-          cat > main.py << 'EOF'
-import ccxt
-import pandas as pd
-import numpy as np
-import requests
-from datetime import datetime
-import os
-
-# دریافت ورودی‌ها
-symbol = os.getenv('SYMBOL') or 'BTC/USDT'
-timeframe = os.getenv('TIMEFRAME') or '1h'
-since_str = os.getenv('SINCE') or '2024-01-01'
-until_str = os.getenv('UNTIL') or '2024-06-01'
-telegram_token = os.getenv('TELEGRAM_TOKEN')
-telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
-
-print(f"🚀 شروع بک‌تست: {symbol} | {timeframe} | {since_str} تا {until_str}")
-
-# تبدیل تاریخ
-try:
-    since_dt = datetime.strptime(since_str, "%Y-%m-%d")
-    until_dt = datetime.strptime(until_str, "%Y-%m-%d")
-    since_ms = int(since_dt.timestamp() * 1000)
-    until_ms = int(until_dt.timestamp() * 1000)
-except Exception as e:
-    print(f"❌ خطای تاریخ: {e}")
-    exit()
-
-# دریافت داده
-try:
-    exchange = ccxt.kucoin()
-    all_data = []
-    fetch_until = since_ms
-
-    while fetch_until < until_ms + 86400000:
-        data = exchange.fetch_ohlcv(symbol, timeframe, since=fetch_until, limit=1000)
-        if not data:
-            break
-        all_data.extend(data)
-        fetch_until = data[-1][0] + 1
-        if data[-1][0] > until_ms:
-            break
-
-    df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    
-    mask = (df['timestamp'] >= since_str) & (df['timestamp'] <= until_str)
-    df = df.loc[mask]
-    
-    if len(df) == 0:
-        print("❌ داده‌ای در بازه زمانی یافت نشد.")
-        exit()
-
-    print(f"✅ {len(df)} کندل دریافت شد.")
-
-except Exception as e:
-    print(f"❌ خطای دریافت داده: {e}")
-    exit()
-
-# محاسبه ATR
-df['tr'] = np.maximum(
-    df['high'] - df['low'],
-    np.maximum(
-        abs(df['high'] - df['close'].shift(1)),
-        abs(df['low'] - df['close'].shift(1))
-    )
-)
-df['atr'] = df['tr'].rolling(14).mean()
-df.dropna(inplace=True)
-
-# سیگنال‌ها
-signals = []
-for i in range(len(df) - 1):
-    row = df.iloc[i]
-    nxt = df.iloc[i + 1]
-
-    # Long
-    if row['close'] < row['open'] and row['close'] < row['close'].rolling(20).mean() - 0.5 * row['atr']:
-        entry = row['close']
-        sl = entry - 1.5 * row['atr']
-        tp = entry + 3.0 * row['atr']
-        result = "TP" if nxt['high'] >= tp else "SL" if nxt['low'] <= sl else "جست‌وجو"
-        signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
-
-    # Short
-    elif row['close'] > row['open'] and row['close'] > row['close'].rolling(20).mean() + 0.5 * row['atr']:
-        entry = row['close']
-        sl = entry + 1.5 * row['atr']
-        tp = entry - 3.0 * row['atr']
-        result = "TP" if nxt['low'] <= tp else "SL" if nxt['high'] >= sl else "جست‌وجو"
-        signals.append(('Short', round(entry, 2), round(sl, 2), round(tp, 2), result))
-
-# گزارش
-if signals:
-    total = len(signals)
-    tp_count = len([s for s in signals if s[4] == 'TP'])
-    sl_count = len([s for s in signals if s[4] == 'SL'])
-    win_rate = (tp_count / total) * 100 if total > 0 else 0
-
-    report = f"""
-📊 گزارش بک‌تست
-────────────────────────────
-نماد: {symbol}
-تایم‌فریم: {timeframe}
-بازه: {since_str} تا {until_str}
-تعداد معاملات: {total}
-حد سود (TP): {tp_count}
-حد ضرر (SL): {sl_count}
-نرخ برد: {win_rate:.1f}%
-نسبت ریسک به ریوارد: 1:2
-────────────────────────────
-"""
-
-    for sig in signals:
-        report += f"[{sig[0]}] ورود: {sig[1]} | SL: {sig[2]} | TP: {sig[3]} | نتیجه: {sig[4]}\n"
-
-    print(report)
-
-    # ارسال به تلگرام
-    if telegram_token and telegram_chat_id:
-        url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-        data = {"chat_id": telegram_chat_id, "text": report, "parse_mode": "Markdown"}
-        response = requests.post(url, data=data)
-        if response.status_code == 200:
-            print("✅ پیام به تلگرام ارسال شد.")
-        else:
-            print(f"❌ خطای ارسال: {response.text}")
-else:
-    print("❌ هیچ سیگنالی تولید نشد.")
-
-EOF
-
-          # اجرای اسکریپت
           python main.py
