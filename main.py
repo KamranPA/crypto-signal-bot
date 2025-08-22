@@ -48,10 +48,8 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
     دریافت داده OHLCV از Binance Testnet Future API
     """
-    # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
 
-    # مپ تایم‌فریم
     tf_map = {
         '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
         '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
@@ -59,7 +57,6 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
     }
     interval = tf_map.get(timeframe.lower(), '1h')
 
-    # استفاده از Future API
     url = "https://testnet.binancefuture.com/fapi/v1/klines"
     all_data = []
     limit = 1000
@@ -105,7 +102,7 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
         return None
 
     ohlcv = []
-    for item in all_data:
+    for item in all_date:
         ohlcv.append([
             int(item[0]),
             float(item[1]),
@@ -201,6 +198,7 @@ def main():
         atr = row['atr']
         ma20 = row['ma20']
         rsi = row['rsi']
+        timestamp = row['timestamp']  # ✅ زمان واقعی کندل
 
         # سیگنال Long
         if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
@@ -209,7 +207,14 @@ def main():
                 sl = entry - 1.5 * atr
                 tp = entry + 3.0 * atr
                 result = "TP" if next_row['high'] >= tp else "SL" if next_row['low'] <= sl else "در جریان"
-                signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
+                signals.append((
+                    'Long',
+                    round(entry, 2),
+                    round(sl, 2),
+                    round(tp, 2),
+                    result,
+                    timestamp.strftime("%Y-%m-%d %H:%M")  # ✅ فرمت تاریخ و ساعت
+                ))
                 last_signal = 'Long'
 
         # سیگنال Short
@@ -219,7 +224,14 @@ def main():
                 sl = entry + 1.5 * atr
                 tp = entry - 3.0 * atr
                 result = "TP" if next_row['low'] <= tp else "SL" if next_row['high'] >= sl else "در جریان"
-                signals.append(('Short', round(entry, 2), round(sl, 2), round(tp, 2), result))
+                signals.append((
+                    'Short',
+                    round(entry, 2),
+                    round(sl, 2),
+                    round(tp, 2),
+                    result,
+                    timestamp.strftime("%Y-%m-%d %H:%M")  # ✅ فرمت تاریخ و ساعت
+                ))
                 last_signal = 'Short'
 
     # گزارش نهایی
@@ -243,7 +255,8 @@ def main():
 ────────────────────────────
         """
         for sig in signals:
-            report += f"`[{sig[0]}]` ورود: `{sig[1]}` | SL: `{sig[2]}` | TP: `{sig[3]}` | نتیجه: `{sig[4]}`\n"
+            # ✅ اضافه کردن تاریخ و ساعت ورود
+            report += f"`[{sig[0]}]` 📅 {sig[5]} | ورود: `{sig[1]}` | SL: `{sig[2]}` | TP: `{sig[3]}` | نتیجه: `{sig[4]}`\n"
     else:
         report = "❌ هیچ سیگنالی تولید نشد."
 
