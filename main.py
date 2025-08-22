@@ -101,7 +101,7 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_daya:
+    if not all_data:
         return None
 
     ohlcv = []
