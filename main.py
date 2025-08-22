@@ -44,9 +44,9 @@ def send_telegram(token, chat_id, text):
         except Exception as e:
             print(f"❌ خطای شبکه: {e}")
 
-def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
+def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده OHLCV از Binance Testnet Future API
+    دریافت داده واقعی از Binance (API عمومی)
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
@@ -59,15 +59,10 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
     }
     interval = tf_map.get(timeframe.lower(), '1h')
 
-    # URL صحیح برای Testnet Future
-    url = "https://testnet.binancefuture.com/fapi/v1/klines"
+    url = "https://api.binance.com/api/v3/klines"
     all_data = []
     limit = 1000
     fetch_since = since_ms
-
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
 
     while fetch_since < until_ms:
         params = {
@@ -79,19 +74,17 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
         }
 
         try:
-            response = requests.get(url, params=params, headers=headers, timeout=15)
+            response = requests.get(url, params=params, timeout=15)
             if response.status_code != 200:
                 print(f"❌ خطا: {response.status_code} - {response.text}")
                 break
 
             data = response.json()
             if not data:
-                print("⚠️ پاسخ خالی است.")
                 break
 
             count = len(data)
             all_data.extend(data)
-            print(f"✅ {count} کندل دریافت شد.")
             fetch_since = data[-1][0] + 1
 
             if count < limit:
@@ -138,11 +131,11 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده از Testnet Future
+    # دریافت داده از Binance (داده واقعی)
     try:
-        data = fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms)
+        data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
         if not data:
-            report = "❌ هیچ داده‌ای از Binance Testnet Future دریافت نشد."
+            report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد اشتباه باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -157,7 +150,7 @@ def main():
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل دریافت شد از Binance Testnet Future.")
+        print(f"✅ {len(df)} کندل واقعی دریافت شد از Binance.")
         print(f"📊 اولین قیمت: {df['close'].iloc[0]:.2f}")
         print(f"📊 آخرین قیمت: {df['close'].iloc[-1]:.2f}")
 
@@ -261,7 +254,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (داده Binance Testnet Future)*
+📊 *گزارش بک‌تست معاملاتی (داده واقعی Binance)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
