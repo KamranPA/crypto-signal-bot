@@ -6,6 +6,9 @@ import os
 from datetime import datetime
 
 def send_telegram(token, chat_id, text):
+    """
+    ارسال پیام به تلگرام با پشتیبانی از پیام‌های طولانی
+    """
     if not token or not chat_id:
         print("⚠️ توکن یا آی‌دی تلگرام وجود ندارد.")
         return
@@ -43,12 +46,12 @@ def send_telegram(token, chat_id, text):
 
 def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده از Binance با Pagination و تأیید صحت
+    دریافت داده OHLCV از API عمومی Binance با Pagination
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
 
-    # مپ تایم‌فریم
+    # مپ تایم‌فریم (حروف کوچک)
     tf_map = {
         '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
         '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
@@ -60,6 +63,9 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     all_data = []
     limit = 1000
     fetch_since = since_ms
+
+    print(f"🔍 در حال دریافت داده از Binance...")
+    print(f"   نماد: {market} | تایم‌فریم: {interval}")
 
     while fetch_since < until_ms:
         params = {
@@ -77,28 +83,41 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not data:
+            if not 
+                print("⚠️ داده‌ای دریافت نشد (پاسخ خالی).")
                 break
 
+            count = len(data)
             all_data.extend(data)
-            fetch_since = data[-1][0] + 1  # به‌روزرسانی برای درخواست بعدی
+            print(f"   ✅ {count} کندل دریافت شد از {pd.to_datetime(data[0][0], unit='ms')}")
 
-            if len(data) < limit:
+            # به‌روزرسانی زمان برای درخواست بعدی
+            fetch_since = data[-1][0] + 1
+
+            # اگر کمتر از 1000 کندل آمد، متوقف شو
+            if count < limit:
                 break
 
         except Exception as e:
-            print(f"❌ خطای شبکه: {e}")
+            print(f"❌ خطای شبکه یا پاسخ: {e}")
             break
 
-    if not all_data:
+    if not all_
         return None
 
     # تبدیل به DataFrame
-    df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'trades', 'taker_buy_base', 'taker_buy_quote', 'ignore'])
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']].astype({
-        'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'
-    })
+    ohlcv = []
+    for item in all_
+        ohlcv.append([
+            int(item[0]),
+            float(item[1]),
+            float(item[2]),
+            float(item[3]),
+            float(item[4]),
+            float(item[5])
+        ])
+
+    return ohlcv
 
 def main():
     symbol = os.getenv("SYMBOL") or "BTC/USDT"
@@ -124,24 +143,27 @@ def main():
 
     # دریافت داده از Binance
     try:
-        df = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if df is None:
-            report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد اشتباه باشد."
+        data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
+        if not 
+            report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد اشتباه باشد یا بازه زمانی نامعتبر."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
+
+        df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
         # فیلتر بازه زمانی
         df = df[(df['timestamp'] >= since_str) & (df['timestamp'] <= until_str)]
         if len(df) == 0:
-            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد."
+            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد. ممکن است بازه زمانی آینده باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل دریافت شد از Binance.")
-        print(f"📅 اولین کندل: {df['timestamp'].iloc[0]} | قیمت: {df['close'].iloc[0]:.2f}")
-        print(f"📅 آخرین کندل: {df['timestamp'].iloc[-1]} | قیمت: {df['close'].iloc[-1]:.2f}")
+        print(f"✅ {len(df)} کندل نهایی دریافت شد از Binance.")
+        print(f"📊 اولین کندل: {df['timestamp'].iloc[0]} | قیمت: {df['close'].iloc[0]:.2f}")
+        print(f"📊 آخرین کندل: {df['timestamp'].iloc[-1]} | قیمت: {df['close'].iloc[-1]:.2f}")
 
     except Exception as e:
         error_msg = f"❌ خطای پردازش داده: {e}"
@@ -149,16 +171,88 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # ✅ تأیید داده با مقایسه قیمت اول و آخر
-    first_price = df['close'].iloc[0]
-    last_price = df['close'].iloc[-1]
-    print(f"🔍 تأیید داده: قیمت اول = {first_price:.2f}, آخر = {last_price:.2f}")
+    # محاسبه ATR
+    df['tr'] = np.maximum(
+        df['high'] - df['low'],
+        np.maximum(
+            abs(df['high'] - df['close'].shift(1)),
+            abs(df['low'] - df['close'].shift(1))
+        )
+    )
+    df['atr'] = df['tr'].rolling(14).mean()
 
-    # محاسبه ATR, MA20, RSI و سیگنال (همان قبلی)
-    # (کد محاسباتی همان قبل است — برای اختصار نمی‌نویسم، ولی در فایل کامل داریم)
+    # محاسبه MA20
+    df['ma20'] = df['close'].rolling(20).mean()
 
-    # گزارش نهایی (همان قبلی)
-    # (کد گزارش و ارسال به تلگرام)
+    # محاسبه RSI
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    rs = gain / loss
+    df['rsi'] = 100 - (100 / (1 + rs))
+
+    # حذف NaN
+    df.dropna(inplace=True)
+
+    # تولید سیگنال
+    signals = []
+    last_signal = None
+
+    for i in range(len(df) - 1):
+        row = df.iloc[i]
+        next_row = df.iloc[i + 1]
+        close = row['close']
+        atr = row['atr']
+        ma20 = row['ma20']
+        rsi = row['rsi']
+
+        # Long
+        if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
+            if last_signal != 'Long':
+                entry = close
+                sl = entry - 1.5 * atr
+                tp = entry + 3.0 * atr
+                result = "TP" if next_row['high'] >= tp else "SL" if next_row['low'] <= sl else "در جریان"
+                signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
+                last_signal = 'Long'
+
+        # Short
+        elif close > row['open'] and close > ma20 + 0.5 * atr and rsi > 70:
+            if last_signal != 'Short':
+                entry = close
+                sl = entry + 1.5 * atr
+                tp = entry - 3.0 * atr
+                result = "TP" if next_row['low'] <= tp else "SL" if next_row['high'] >= sl else "در جریان"
+                signals.append(('Short', round(entry, 2), round(sl, 2), round(tp, 2), result))
+                last_signal = 'Short'
+
+    # گزارش نهایی
+    if signals:
+        total = len(signals)
+        tp_count = len([s for s in signals if s[4] == 'TP'])
+        sl_count = len([s for s in signals if s[4] == 'SL'])
+        win_rate = (tp_count / total) * 100 if total > 0 else 0
+
+        report = f"""
+📊 *گزارش بک‌تست معاملاتی (داده Binance)*
+────────────────────────────
+📌 *نماد:* `{symbol}`
+🕒 *تایم‌فریم:* `{timeframe}`
+📅 *بازه:* `{since_str} تا {until_str}`
+📊 *تعداد معاملات:* `{total}`
+✅ *حد سود:* `{tp_count}`
+❌ *حد ضرر:* `{sl_count}`
+📈 *نرخ برد:* `{win_rate:.1f}%`
+🎯 *نسبت ریسک به ریوارد:* `1:2`
+────────────────────────────
+        """
+        for sig in signals:
+            report += f"`[{sig[0]}]` ورود: `{sig[1]}` | SL: `{sig[2]}` | TP: `{sig[3]}` | نتیجه: `{sig[4]}`\n"
+    else:
+        report = "❌ هیچ سیگنالی تولید نشد."
+
+    print("\n" + report)
+    send_telegram(telegram_token, telegram_chat_id, report)
 
 if __name__ == "__main__":
     main()
