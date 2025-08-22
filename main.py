@@ -46,12 +46,12 @@ def send_telegram(token, chat_id, text):
 
 def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده OHLCV از Binance با Pagination
+    دریافت داده OHLCV از API عمومی Binance با Pagination و headers
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
 
-    # مپ تایم‌فریم (حروف کوچک)
+    # مپ تایم‌فریم
     tf_map = {
         '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
         '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
@@ -60,12 +60,13 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     interval = tf_map.get(timeframe.lower(), '1h')
 
     url = "https://api.binance.com/api/v3/klines"
-    all_data = []
+    all_data = []  # ✅ تعریف صحیح all_data
     limit = 1000
     fetch_since = since_ms
 
-    print(f"🔍 در حال دریافت داده از Binance...")
-    print(f"   نماد: {market} | تایم‌فریم: {interval}")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
 
     while fetch_since < until_ms:
         params = {
@@ -77,35 +78,35 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
         }
 
         try:
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, headers=headers, timeout=15)
+            print(f"   📡 درخواست: {response.url}")
+            print(f"   📥 وضعیت: {response.status_code}")
+
             if response.status_code != 200:
-                print(f"❌ خطای HTTP {response.status_code}: {response.text}")
+                print(f"❌ خطا: {response.text}")
                 break
 
             data = response.json()
-            if not data:
-                print("⚠️ داده‌ای دریافت نشد (پاسخ خالی).")
+            if not data:  # ✅ بررسی درست data
+                print("⚠️ پاسخ خالی است.")
                 break
 
             count = len(data)
             all_data.extend(data)
-            print(f"   ✅ {count} کندل دریافت شد از {pd.to_datetime(data[0][0], unit='ms')}")
-
-            # به‌روزرسانی زمان برای درخواست بعدی
+            print(f"   ✅ {count} کندل دریافت شد.")
             fetch_since = data[-1][0] + 1
 
-            # اگر کمتر از 1000 کندل آمد، متوقف شو
             if count < limit:
                 break
 
         except Exception as e:
-            print(f"❌ خطای شبکه یا پاسخ: {e}")
+            print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_data:
+    if not all_data:  # ✅ اصلاح خط 87 و 107: if not all_data
         return None
 
-    # تبدیل به DataFrame
+    # ✅ اصلاح خط 143: for item in all_data
     ohlcv = []
     for item in all_data:
         ohlcv.append([
@@ -116,7 +117,6 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
             float(item[4]),
             float(item[5])
         ])
-
     return ohlcv
 
 def main():
@@ -143,32 +143,28 @@ def main():
 
     # دریافت داده از Binance
     try:
-        data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not data:
+        all_data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
+        if not all_data:  # ✅ اصلاح خط 107: if not all_data
             report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد اشتباه باشد یا شبکه مشکل داشته باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        # ✅ اصلاح خط 103: استفاده از all_data
+        df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
         # فیلتر بازه زمانی
         df = df[(df['timestamp'] >= since_str) & (df['timestamp'] <= until_str)]
         if len(df) == 0:
-            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد. ممکن است بازه زمانی آینده باشد."
+            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل نهایی دریافت شد از Binance.")
-        print(f"📊 اولین کندل: {df['timestamp'].iloc[0]} | قیمت: {df['close'].iloc[0]:.2f}")
-        print(f"📊 آخرین کندل: {df['timestamp'].iloc[-1]} | قیمت: {df['close'].iloc[-1]:.2f}")
-
-        # ✅ تأیید داده: مقایسه با قیمت واقعی (مثلاً در TradingView)
-        first_price = df['close'].iloc[0]
-        last_price = df['close'].iloc[-1]
-        print(f"🔍 تأیید داده: قیمت اول = {first_price:.2f}, آخر = {last_price:.2f}")
+        print(f"✅ {len(df)} کندل دریافت شد از Binance.")
+        print(f"📊 اولین قیمت: {df['close'].iloc[0]:.2f}")
+        print(f"📊 آخرین قیمت: {df['close'].iloc[-1]:.2f}")
 
     except Exception as e:
         error_msg = f"❌ خطای پردازش داده: {e}"
@@ -176,7 +172,7 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # محاسبه ATR, MA20, RSI و سیگنال
+    # محاسبه ATR
     df['tr'] = np.maximum(
         df['high'] - df['low'],
         np.maximum(
@@ -185,14 +181,18 @@ def main():
         )
     )
     df['atr'] = df['tr'].rolling(14).mean()
+
+    # محاسبه MA20
     df['ma20'] = df['close'].rolling(20).mean()
 
+    # محاسبه RSI
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
     rs = gain / loss
     df['rsi'] = 100 - (100 / (1 + rs))
 
+    # حذف NaN
     df.dropna(inplace=True)
 
     # تولید سیگنال
@@ -207,7 +207,7 @@ def main():
         ma20 = row['ma20']
         rsi = row['rsi']
 
-        # Long
+        # سیگنال Long
         if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
             if last_signal != 'Long':
                 entry = close
@@ -217,7 +217,7 @@ def main():
                 signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result))
                 last_signal = 'Long'
 
-        # Short
+        # سیگنال Short
         elif close > row['open'] and close > ma20 + 0.5 * atr and rsi > 70:
             if last_signal != 'Short':
                 entry = close
