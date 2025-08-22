@@ -46,7 +46,7 @@ def send_telegram(token, chat_id, text):
 
 def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده واقعی از Binance (API عمومی)
+    دریافت داده واقعی از Binance (API عمومی) با Proxy
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
@@ -64,6 +64,12 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     limit = 1000
     fetch_since = since_ms
 
+    # Proxy (برای جلوگیری از مسدود شدن)
+    proxies = {
+        'http': 'http://proxy.example.com:8080',
+        'https': 'https://proxy.example.com:8080'
+    }
+
     while fetch_since < until_ms:
         params = {
             'symbol': market,
@@ -74,7 +80,7 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
         }
 
         try:
-            response = requests.get(url, params=params, timeout=15)
+            response = requests.get(url, params=params, proxies=proxies, timeout=15)
             if response.status_code != 200:
                 print(f"❌ خطا: {response.status_code} - {response.text}")
                 break
