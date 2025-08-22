@@ -102,7 +102,7 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطای شبکه یا پاسخ: {e}")
             break
 
-    if not all_
+    if not all_data:
         return None
 
     # تبدیل به DataFrame
