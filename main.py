@@ -48,8 +48,10 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
     دریافت داده OHLCV از Binance Testnet Future API
     """
+    # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
 
+    # مپ تایم‌فریم
     tf_map = {
         '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
         '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
@@ -57,6 +59,7 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
     }
     interval = tf_map.get(timeframe.lower(), '1h')
 
+    # URL صحیح برای Testnet Future
     url = "https://testnet.binancefuture.com/fapi/v1/klines"
     all_data = []
     limit = 1000
@@ -193,7 +196,6 @@ def main():
 
     for i in range(len(df) - 1):
         row = df.iloc[i]
-        next_row = df.iloc[i + 1]
         close = row['close']
         atr = row['atr']
         ma20 = row['ma20']
@@ -207,7 +209,7 @@ def main():
                 sl = entry - 1.5 * atr
                 tp = entry + 3.0 * atr
                 result = "در جریان"
-                # ✅ بررسی نتیجه بر اساس تمام کندل‌های بعدی
+                # بررسی نتیجه بر اساس تمام کندل‌های بعدی
                 for j in range(i + 1, len(df)):
                     if df['high'].iloc[j] >= tp:
                         result = "TP"
@@ -232,7 +234,7 @@ def main():
                 sl = entry + 1.5 * atr
                 tp = entry - 3.0 * atr
                 result = "در جریان"
-                # ✅ بررسی نتیجه بر اساس تمام کندل‌های بعدی
+                # بررسی نتیجه بر اساس تمام کندل‌های بعدی
                 for j in range(i + 1, len(df)):
                     if df['low'].iloc[j] <= tp:
                         result = "TP"
@@ -255,6 +257,7 @@ def main():
         total = len(signals)
         tp_count = len([s for s in signals if s[4] == 'TP'])
         sl_count = len([s for s in signals if s[4] == 'SL'])
+        ongoing_count = len([s for s in signals if s[4] == 'در جریان'])
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
@@ -266,6 +269,7 @@ def main():
 📊 *تعداد معاملات:* `{total}`
 ✅ *حد سود:* `{tp_count}`
 ❌ *حد ضرر:* `{sl_count}`
+🔄 *در جریان:* `{ongoing_count}`
 📈 *نرخ برد:* `{win_rate:.1f}%`
 🎯 *نسبت ریسک به ریوارد:* `1:2`
 ────────────────────────────
