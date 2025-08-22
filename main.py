@@ -46,7 +46,7 @@ def send_telegram(token, chat_id, text):
 
 def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده OHLCV از Binance Testnet (بدون محدودیت جغرافیایی)
+    دریافت داده OHLCV از Binance Testnet Future API
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
@@ -59,8 +59,8 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
     }
     interval = tf_map.get(timeframe.lower(), '1h')
 
-    # استفاده از Testnet API
-    url = "https://testnet.binancefuture.com/api/v3/klines"
+    # استفاده از Future API
+    url = "https://testnet.binancefuture.com/fapi/v1/klines"
     all_data = []
     limit = 1000
     fetch_since = since_ms
@@ -85,7 +85,7 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not data:  # ✅ خط 91: بررسی صحیح data
+            if not 
                 print("⚠️ پاسخ خالی است.")
                 break
 
@@ -101,12 +101,11 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_data:  # ✅ خط 107: بررسی صحیح all_data
+    if not all_
         return None
 
-    # تبدیل به OHLCV
     ohlcv = []
-    for item in all_data:  # ✅ خط 111 و 147: استفاده صحیح از all_data
+    for item in all_
         ohlcv.append([
             int(item[0]),
             float(item[1]),
@@ -139,11 +138,11 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده از Testnet
+    # دریافت داده از Testnet Future
     try:
         data = fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not data:  # ✅ خط 143: بررسی صحیح data
-            report = "❌ هیچ داده‌ای از Binance Testnet دریافت نشد."
+        if not data:
+            report = "❌ هیچ داده‌ای از Binance Testnet Future دریافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -158,7 +157,7 @@ def main():
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل دریافت شد از Binance Testnet.")
+        print(f"✅ {len(df)} کندل دریافت شد از Binance Testnet Future.")
         print(f"📊 اولین قیمت: {df['close'].iloc[0]:.2f}")
         print(f"📊 آخرین قیمت: {df['close'].iloc[-1]:.2f}")
 
@@ -231,7 +230,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (داده Binance Testnet)*
+📊 *گزارش بک‌تست معاملاتی (داده Binance Testnet Future)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
