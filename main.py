@@ -144,7 +144,7 @@ def main():
     # دریافت داده از Binance
     try:
         data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not 
+        if not data:
             report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد اشتباه باشد یا بازه زمانی نامعتبر."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
