@@ -82,7 +82,7 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not 
+            if not data:
                 print("⚠️ پاسخ خالی است.")
                 break
 
@@ -98,11 +98,11 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_
+    if not all_data:
         return None
 
     ohlcv = []
-    for item in all_
+    for item in all_data:
         ohlcv.append([
             int(item[0]),
             float(item[1]),
@@ -138,7 +138,7 @@ def main():
     # دریافت داده از Testnet Future
     try:
         data = fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not 
+        if not data:
             report = "❌ هیچ داده‌ای از Binance Testnet Future دریافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
