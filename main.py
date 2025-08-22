@@ -252,4 +252,4 @@ def main():
     send_telegram(telegram_token, telegram_chat_id, report)
 
 if __name__ == "__main__":
-    main()ع
+    main()
