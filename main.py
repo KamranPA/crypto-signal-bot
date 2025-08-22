@@ -44,9 +44,9 @@ def send_telegram(token, chat_id, text):
         except Exception as e:
             print(f"❌ خطای شبکه: {e}")
 
-def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
+def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده OHLCV از API عمومی Binance با Pagination و headers
+    دریافت داده OHLCV از Binance Testnet (بدون محدودیت جغرافیایی)
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
@@ -59,8 +59,9 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     }
     interval = tf_map.get(timeframe.lower(), '1h')
 
-    url = "https://api.binance.com/api/v3/klines"
-    all_data = []  # ✅ تعریف صحیح all_data
+    # استفاده از Testnet API
+    url = "https://testnet.binancefuture.com/api/v3/klines"
+    all_data = []
     limit = 1000
     fetch_since = since_ms
 
@@ -79,21 +80,18 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
 
         try:
             response = requests.get(url, params=params, headers=headers, timeout=15)
-            print(f"   📡 درخواست: {response.url}")
-            print(f"   📥 وضعیت: {response.status_code}")
-
             if response.status_code != 200:
-                print(f"❌ خطا: {response.text}")
+                print(f"❌ خطا: {response.status_code} - {response.text}")
                 break
 
             data = response.json()
-            if not data:  # ✅ بررسی درست data
+            if not data:  # ✅ خط 91: بررسی صحیح data
                 print("⚠️ پاسخ خالی است.")
                 break
 
             count = len(data)
             all_data.extend(data)
-            print(f"   ✅ {count} کندل دریافت شد.")
+            print(f"✅ {count} کندل دریافت شد.")
             fetch_since = data[-1][0] + 1
 
             if count < limit:
@@ -103,12 +101,12 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_data:  # ✅ اصلاح خط 87 و 107: if not all_data
+    if not all_data:  # ✅ خط 107: بررسی صحیح all_data
         return None
 
-    # ✅ اصلاح خط 143: for item in all_data
+    # تبدیل به OHLCV
     ohlcv = []
-    for item in all_data:
+    for item in all_data:  # ✅ خط 111 و 147: استفاده صحیح از all_data
         ohlcv.append([
             int(item[0]),
             float(item[1]),
@@ -141,28 +139,26 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده از Binance
+    # دریافت داده از Testnet
     try:
-        all_data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not all_data:  # ✅ اصلاح خط 107: if not all_data
-            report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد اشتباه باشد یا شبکه مشکل داشته باشد."
+        data = fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms)
+        if not data:  # ✅ خط 143: بررسی صحیح data
+            report = "❌ هیچ داده‌ای از Binance Testnet دریافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        # ✅ اصلاح خط 103: استفاده از all_data
-        df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-
-        # فیلتر بازه زمانی
         df = df[(df['timestamp'] >= since_str) & (df['timestamp'] <= until_str)]
+
         if len(df) == 0:
-            report = "❌ هیچ داده‌ای در بازه مشخص‌شده یافت نشد."
+            report = "❌ هیچ داده‌ای در بازه زمانی یافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل دریافت شد از Binance.")
+        print(f"✅ {len(df)} کندل دریافت شد از Binance Testnet.")
         print(f"📊 اولین قیمت: {df['close'].iloc[0]:.2f}")
         print(f"📊 آخرین قیمت: {df['close'].iloc[-1]:.2f}")
 
@@ -235,7 +231,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (داده Binance)*
+📊 *گزارش بک‌تست معاملاتی (داده Binance Testnet)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
@@ -256,4 +252,4 @@ def main():
     send_telegram(telegram_token, telegram_chat_id, report)
 
 if __name__ == "__main__":
-    main()
+    main()ع
