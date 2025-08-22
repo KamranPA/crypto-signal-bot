@@ -46,7 +46,7 @@ def send_telegram(token, chat_id, text):
 
 def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده واقعی از Binance (API عمومی) با Proxy
+    دریافت داده واقعی از Binance (API عمومی) با Proxy واقعی
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace('/', '').upper()
@@ -64,7 +64,7 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
     limit = 1000
     fetch_since = since_ms
 
-    # Proxy (برای جلوگیری از مسدود شدن)
+    # Proxy واقعی (مثلاً از سرویس‌های مثل HideMyAss, NordVPN, Proxifier)
     proxies = {
         'http': 'http://proxy.example.com:8080',
         'https': 'https://proxy.example.com:8080'
