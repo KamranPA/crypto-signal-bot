@@ -107,7 +107,7 @@ def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
 
     # تبدیل به DataFrame
     ohlcv = []
-    for item in all_
+    for item in all_data:
         ohlcv.append([
             int(item[0]),
             float(item[1]),
