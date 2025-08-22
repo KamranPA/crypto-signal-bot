@@ -102,7 +102,7 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
         return None
 
     ohlcv = []
-    for item in all_date:
+    for item in all_data:
         ohlcv.append([
             int(item[0]),
             float(item[1]),
