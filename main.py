@@ -82,7 +82,7 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not data:
+            if not 
                 print("⚠️ پاسخ خالی است.")
                 break
 
@@ -98,11 +98,11 @@ def fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_data:
+    if not all_
         return None
 
     ohlcv = []
-    for item in all_data:
+    for item in all_
         ohlcv.append([
             int(item[0]),
             float(item[1]),
@@ -138,7 +138,7 @@ def main():
     # دریافت داده از Testnet Future
     try:
         data = fetch_binance_testnet_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not data:
+        if not 
             report = "❌ هیچ داده‌ای از Binance Testnet Future دریافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
@@ -198,7 +198,7 @@ def main():
         atr = row['atr']
         ma20 = row['ma20']
         rsi = row['rsi']
-        timestamp = row['timestamp']  # ✅ زمان واقعی کندل
+        timestamp = row['timestamp']
 
         # سیگنال Long
         if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
@@ -206,14 +206,22 @@ def main():
                 entry = close
                 sl = entry - 1.5 * atr
                 tp = entry + 3.0 * atr
-                result = "TP" if next_row['high'] >= tp else "SL" if next_row['low'] <= sl else "در جریان"
+                result = "در جریان"
+                # ✅ بررسی نتیجه بر اساس تمام کندل‌های بعدی
+                for j in range(i + 1, len(df)):
+                    if df['high'].iloc[j] >= tp:
+                        result = "TP"
+                        break
+                    elif df['low'].iloc[j] <= sl:
+                        result = "SL"
+                        break
                 signals.append((
                     'Long',
                     round(entry, 2),
                     round(sl, 2),
                     round(tp, 2),
                     result,
-                    timestamp.strftime("%Y-%m-%d %H:%M")  # ✅ فرمت تاریخ و ساعت
+                    timestamp.strftime("%Y-%m-%d %H:%M")
                 ))
                 last_signal = 'Long'
 
@@ -223,14 +231,22 @@ def main():
                 entry = close
                 sl = entry + 1.5 * atr
                 tp = entry - 3.0 * atr
-                result = "TP" if next_row['low'] <= tp else "SL" if next_row['high'] >= sl else "در جریان"
+                result = "در جریان"
+                # ✅ بررسی نتیجه بر اساس تمام کندل‌های بعدی
+                for j in range(i + 1, len(df)):
+                    if df['low'].iloc[j] <= tp:
+                        result = "TP"
+                        break
+                    elif df['high'].iloc[j] >= sl:
+                        result = "SL"
+                        break
                 signals.append((
                     'Short',
                     round(entry, 2),
                     round(sl, 2),
                     round(tp, 2),
                     result,
-                    timestamp.strftime("%Y-%m-%d %H:%M")  # ✅ فرمت تاریخ و ساعت
+                    timestamp.strftime("%Y-%m-%d %H:%M")
                 ))
                 last_signal = 'Short'
 
@@ -255,7 +271,6 @@ def main():
 ────────────────────────────
         """
         for sig in signals:
-            # ✅ اضافه کردن تاریخ و ساعت ورود
             report += f"`[{sig[0]}]` 📅 {sig[5]} | ورود: `{sig[1]}` | SL: `{sig[2]}` | TP: `{sig[3]}` | نتیجه: `{sig[4]}`\n"
     else:
         report = "❌ هیچ سیگنالی تولید نشد."
