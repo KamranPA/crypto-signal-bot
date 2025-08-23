@@ -1,11 +1,10 @@
-# .github/workflows/backtest-runner.yml
 name: Run Backtest
 
 on:
   workflow_dispatch:
     inputs:
       symbol:
-        description: 'نماد مثلاً BTC/USDT'
+        description: 'نماد (مثلاً BTC/USDT)'
         required: true
         default: 'BTC/USDT'
       timeframe:
@@ -30,7 +29,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ccxt pandas ta requests
+          pip install -r requirements.txt
 
       - name: Run backtest
         env:
@@ -42,5 +41,5 @@ jobs:
         run: |
           python run_backtest.py
 
-      - name: Print results
-        run: echo "Backtest completed."
+      - name: Success
+        run: echo "✅ بک‌تست با موفقیت اجرا شد."
