@@ -2,32 +2,14 @@
   "default_symbol": "BTC/USDT",
   "default_timeframe": "1h",
   "default_days": 30,
-  
   "regime_detection": {
     "adx_threshold": 25,
-    "range_width_threshold": 0.7,
     "range_window": 20,
     "breakout_window": 20
   },
-
   "strategy": {
-    "trend": {
-      "fast_sma": 20,
-      "slow_sma": 50
-    },
-    "range": {
-      "lookback_window": 20
-    },
-    "breakout": {
-      "lookback_window": 20
-    },
-    "atr_period": 14,
     "tp_multiplier": 2.0,
-    "sl_multiplier": 1.0
-  },
-
-  "telegram": {
-    "send_on_no_trades": false,
-    "message_prefix": "🚀 سیگنال جدید سیستم معاملاتی"
+    "sl_multiplier": 1.0,
+    "atr_period": 14
   }
 }
