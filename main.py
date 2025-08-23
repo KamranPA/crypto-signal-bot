@@ -109,10 +109,10 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_data
+    if not all_data:
         return None
 
-    return all_data
+    return all_data:
 
 def main():
     symbol = os.getenv("SYMBOL") or "BTC/USDT"
