@@ -6,40 +6,36 @@ from src.strategy.trading_system import generate_signal
 from src.backtest.backtester import run_backtest
 from src.utils.telegram_notifier import send_telegram_report
 
+def date_to_milliseconds(date_str):
+    """تبدیل تاریخ به میلی‌ثانیه"""
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    return int(dt.timestamp() * 1000)
+
 if __name__ == "__main__":
     symbol = os.getenv("SYMBOL", "BTC/USDT")
     timeframe = os.getenv("TIMEFRAME", "1h")
-    days = int(os.getenv("DAYS", 30))
+    start_date = os.getenv("START_DATE", "2024-01-01")
+    end_date = os.getenv("END_DATE", "2024-03-01")
 
-    since = int((datetime.now() - timedelta(days=days)).timestamp() * 1000)
+    since = date_to_milliseconds(start_date)
+    until = date_to_milliseconds(end_date)
 
-    print(f"🔍 دریافت داده از CoinEx: {symbol} | {timeframe} | {days} روز")
-    df = fetch_ohlcv(symbol, timeframe, since)
+    print(f"🔍 دریافت داده از {start_date} تا {end_date} | نماد: {symbol} | تایم فریم: {timeframe}")
+    df = fetch_ohlcv(symbol, timeframe, since, limit=1000)
+
+    # فیلتر تا تاریخ پایان
+    df = df[df.index <= datetime.strptime(end_date, "%Y-%m-%d")]
 
     if df.empty:
-        print("❌ داده‌ای دریافت نشد. نماد یا تایم فریم را بررسی کنید.")
+        print("❌ داده‌ای دریافت نشد. نماد یا بازه زمانی را بررسی کنید.")
         exit(1)
 
     print("📊 اجرای بک‌تست...")
     report = run_backtest(df, generate_signal)
 
-    # 🔍 تحلیل عملکرد بر اساس رژیم
-    trades = report['trades']
-    by_regime = {}
-    for trade in trades:
-        reg = trade.get('regime', 'Unknown')
-        by_regime[reg] = by_regime.get(reg, {'total': 0, 'wins': 0})
-        by_regime[reg]['total'] += 1
-        if trade['pnl'] > 0:
-            by_regime[reg]['wins'] += 1
-
-    # اضافه کردن آمار رژیم به گزارش
-    regime_stats = []
-    for reg, data in by_regime.items():
-        win_rate = round(data['wins'] / data['total'] * 100, 2)
-        regime_stats.append(f"{reg}: {data['total']} معامله، {win_rate}% موفق")
-
-    report['regime_analysis'] = "; ".join(regime_stats)
+    # اضافه کردن بازه زمانی به گزارش
+    report['start_date'] = start_date
+    report['end_date'] = end_date
 
     print("📨 ارسال گزارش به تلگرام...")
     send_telegram_report(report)
