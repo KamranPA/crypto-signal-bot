@@ -164,24 +164,25 @@ def main():
     df['atr'] = (df['high'] - df['low']).rolling(14).mean()
     df['rsi'] = 100 - (100 / (1 + df['close'].diff().clip(lower=0).rolling(14).mean() / 
                               abs(df['close'].diff()).rolling(14).mean()))
+    df['rsi_trend'] = df['rsi'].diff(3)  # شتاب RSI در 3 کندل
+    df['price_trend'] = df['close'].diff(3)  # شتاب قیمت
 
     # تشخیص بازار رنج
     df['range_market'] = (
-        (df['close'].rolling(5).std() / df['close']) < 0.02  # نوسان کم
-    ) & (df['atr'] < df['atr'].rolling(50).mean() * 1.1)       # ATR پایین
+        (df['close'].rolling(5).std() / df['close']) < 0.02
+    ) & (df['atr'] < df['atr'].rolling(50).mean() * 1.1)
 
-    # محاسبه سطوح حمایت و مقاومت (میانگین متحرک 20 روزه + ATR)
+    # سطوح حمایت و مقاومت
     df['support'] = df['ma20'] - 0.8 * df['atr']
     df['resistance'] = df['ma20'] + 0.8 * df['atr']
 
     df.dropna(inplace=True)
 
-    # تولید سیگنال — فقط در بازار رنج
+    # تولید سیگنال — فقط در بازار رنج و با شروع حرکت
     signals = []
 
-    for i in range(1, len(df)):
+    for i in range(5, len(df)):  # حداقل 5 کندل برای تایید
         row = df.iloc[i]
-        prev = df.iloc[i-1]
         close = row['close']
         timestamp = row['timestamp']
 
@@ -189,35 +190,37 @@ def main():
         if not row['range_market']:
             continue
 
-        # 🔼 سیگنال Long: نزدیک به حمایت و RSI < 40
+        # 🔼 سیگنال Long: نزدیک به حمایت + RSI در حال صعود + قیمت در حال صعود
         if close <= row['support'] and row['rsi'] < 40:
-            entry = close
-            sl = row['support'] - 0.5 * row['atr']
-            tp = row['ma20'] + 0.5 * row['atr']
-            result = "در جریان"
-            for j in range(i + 1, len(df)):
-                if df['high'].iloc[j] >= tp:
-                    result = "TP"
-                    break
-                elif df['low'].iloc[j] <= sl:
-                    result = "SL"
-                    break
-            signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result, timestamp.strftime("%Y-%m-%d %H:%M")))
+            if row['rsi_trend'] > 0 and row['price_trend'] > 0:
+                entry = close
+                sl = row['support'] - 0.5 * row['atr']
+                tp = row['ma20'] + 0.5 * row['atr']
+                result = "در جریان"
+                for j in range(i + 1, len(df)):
+                    if df['high'].iloc[j] >= tp:
+                        result = "TP"
+                        break
+                    elif df['low'].iloc[j] <= sl:
+                        result = "SL"
+                        break
+                signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result, timestamp.strftime("%Y-%m-%d %H:%M")))
 
-        # 🔽 سیگنال Short: نزدیک به مقاومت و RSI > 60
+        # 🔽 سیگنال Short: نزدیک به مقاومت + RSI در حال نزول + قیمت در حال نزول
         elif close >= row['resistance'] and row['rsi'] > 60:
-            entry = close
-            sl = row['resistance'] + 0.5 * row['atr']
-            tp = row['ma20'] - 0.5 * row['atr']
-            result = "در جریان"
-            for j in range(i + 1, len(df)):
-                if df['low'].iloc[j] <= tp:
-                    result = "TP"
-                    break
-                elif df['high'].iloc[j] >= sl:
-                    result = "SL"
-                    break
-            signals.append(('Short', round(entry, 2), round(sl, 2), round(tp, 2), result, timestamp.strftime("%Y-%m-%d %H:%M")))
+            if row['rsi_trend'] < 0 and row['price_trend'] < 0:
+                entry = close
+                sl = row['resistance'] + 0.5 * row['atr']
+                tp = row['ma20'] - 0.5 * row['atr']
+                result = "در جریان"
+                for j in range(i + 1, len(df)):
+                    if df['low'].iloc[j] <= tp:
+                        result = "TP"
+                        break
+                    elif df['high'].iloc[j] >= sl:
+                        result = "SL"
+                        break
+                signals.append(('Short', round(entry, 2), round(sl, 2), round(tp, 2), result, timestamp.strftime("%Y-%m-%d %H:%M")))
 
     # گزارش نهایی
     if signals:
@@ -227,7 +230,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (سیستم رنج بهینه)*
+📊 *گزارش بک‌تست معاملاتی (سیستم رنج بهینه نهایی)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
@@ -236,7 +239,7 @@ def main():
 ✅ *حد سود:* `{tp_count}`
 ❌ *حد ضرر:* `{sl_count}`
 📈 *نرخ برد:* `{win_rate:.1f}%`
-🎯 *استراتژی:* `بازار رنج (حمایت/مقاومت)`
+🎯 *استراتژی:* `بازار رنج + شروع حرکت`
 ────────────────────────────
         """
         for sig in signals:
