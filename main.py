@@ -187,6 +187,9 @@ def main():
     # حذف NaN
     df.dropna(inplace=True)
 
+    # تشخیص روند اصلی بازار
+    trend = "up" if df['close'].iloc[-1] > df['ma20'].iloc[-1] else "down"
+
     # تولید سیگنال
     signals = []
     last_signal = None
@@ -199,55 +202,58 @@ def main():
         rsi = row['rsi']
         timestamp = row['timestamp']
 
-        # سیگنال Long
-        if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
-            if last_signal != 'Long':
-                entry = close
-                sl = entry - 1.5 * atr
-                tp = entry + 3.0 * atr
-                result = "در جریان"
-                # بررسی نتیجه بر اساس تمام کندل‌های بعدی
-                for j in range(i + 1, len(df)):
-                    if df['high'].iloc[j] >= tp:
-                        result = "TP"
-                        break
-                    elif df['low'].iloc[j] <= sl:
-                        result = "SL"
-                        break
-                signals.append((
-                    'Long',
-                    round(entry, 2),
-                    round(sl, 2),
-                    round(tp, 2),
-                    result,
-                    timestamp.strftime("%Y-%m-%d %H:%M")
-                ))
-                last_signal = 'Long'
+        # فقط معاملات همسو با روند ایجاد کن
+        if trend == "up":
+            # سیگنال Long فقط در روند صعودی
+            if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
+                if last_signal != 'Long':
+                    entry = close
+                    sl = entry - 1.5 * atr
+                    tp = entry + 3.0 * atr
+                    result = "در جریان"
+                    # بررسی نتیجه بر اساس تمام کندل‌های بعدی
+                    for j in range(i + 1, len(df)):
+                        if df['high'].iloc[j] >= tp:
+                            result = "TP"
+                            break
+                        elif df['low'].iloc[j] <= sl:
+                            result = "SL"
+                            break
+                    signals.append((
+                        'Long',
+                        round(entry, 2),
+                        round(sl, 2),
+                        round(tp, 2),
+                        result,
+                        timestamp.strftime("%Y-%m-%d %H:%M")
+                    ))
+                    last_signal = 'Long'
 
-        # سیگنال Short
-        elif close > row['open'] and close > ma20 + 0.5 * atr and rsi > 70:
-            if last_signal != 'Short':
-                entry = close
-                sl = entry + 1.5 * atr
-                tp = entry - 3.0 * atr
-                result = "در جریان"
-                # بررسی نتیجه بر اساس تمام کندل‌های بعدی
-                for j in range(i + 1, len(df)):
-                    if df['low'].iloc[j] <= tp:
-                        result = "TP"
-                        break
-                    elif df['high'].iloc[j] >= sl:
-                        result = "SL"
-                        break
-                signals.append((
-                    'Short',
-                    round(entry, 2),
-                    round(sl, 2),
-                    round(tp, 2),
-                    result,
-                    timestamp.strftime("%Y-%m-%d %H:%M")
-                ))
-                last_signal = 'Short'
+        elif trend == "down":
+            # سیگنال Short فقط در روند نزولی
+            if close > row['open'] and close > ma20 + 0.5 * atr and rsi > 70:
+                if last_signal != 'Short':
+                    entry = close
+                    sl = entry + 1.5 * atr
+                    tp = entry - 3.0 * atr
+                    result = "در جریان"
+                    # بررسی نتیجه بر اساس تمام کندل‌های بعدی
+                    for j in range(i + 1, len(df)):
+                        if df['low'].iloc[j] <= tp:
+                            result = "TP"
+                            break
+                        elif df['high'].iloc[j] >= sl:
+                            result = "SL"
+                            break
+                    signals.append((
+                        'Short',
+                        round(entry, 2),
+                        round(sl, 2),
+                        round(tp, 2),
+                        result,
+                        timestamp.strftime("%Y-%m-%d %H:%M")
+                    ))
+                    last_signal = 'Short'
 
     # گزارش نهایی
     if signals:
