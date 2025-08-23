@@ -1,5 +1,4 @@
 # src/regime_detection/breakout_detector.py
-
 def is_breakout_regime(df, window=20):
     recent_high = df['high'].rolling(window).max().iloc[-2]
     recent_low = df['low'].rolling(window).min().iloc[-2]
