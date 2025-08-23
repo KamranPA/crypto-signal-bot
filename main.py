@@ -79,13 +79,13 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not data
+            if not data:
                 print("⚠️ پاسخ خالی است.")
                 break
 
             # داده در ['data'] است
             candles = data.get('data', [])
-            if not data
+            if not data:
                 break
 
             # فرمت: [time, open, close, high, low, volume, turnover]
