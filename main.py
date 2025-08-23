@@ -48,10 +48,8 @@ def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
     دریافت داده OHLCV از API عمومی CoinEx
     """
-    # تبدیل نماد: BTC/USDT → btcusdt
     market = symbol.replace('/', '').lower()
 
-    # مپ تایم‌فریم
     tf_map = {
         '1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min',
         '30m': '30min', '1h': '1hour', '2h': '2hour', '4h': '4hour',
@@ -62,7 +60,7 @@ def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
     url = "https://api.coinex.com/v1/market/kline"
     all_data = []
     limit = 1000
-    fetch_since = since_ms // 1000  # CoinEx زمان را به ثانیه می‌خواهد
+    fetch_since = since_ms // 1000
 
     while fetch_since < until_ms // 1000:
         params = {
@@ -87,21 +85,18 @@ def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
             if not data:
                 break
 
-            count = len(klines)
             for item in klines:
                 all_data.append([
-                    int(item[0]) * 1000,  # زمان به میلی‌ثانیه
-                    float(item[1]),       # open
-                    float(item[3]),       # high
-                    float(item[4]),       # low
-                    float(item[2]),       # close
-                    float(item[5])        # volume
+                    int(item[0]) * 1000,
+                    float(item[1]),
+                    float(item[3]),
+                    float(item[4]),
+                    float(item[2]),
+                    float(item[5])
                 ])
 
-            # به‌روزرسانی برای درخواست بعدی
             fetch_since = int(klines[-1][0]) + 1
-
-            if count < limit:
+            if len(klines) < limit:
                 break
 
         except Exception as e:
@@ -135,11 +130,11 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده از CoinEx
+    # دریافت داده
     try:
         data = fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not data:
-            report = "❌ هیچ داده‌ای از CoinEx دریافت نشد. ممکن است نماد اشتباه باشد."
+        if not 
+            report = "❌ هیچ داده‌ای از CoinEx دریافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -154,7 +149,7 @@ def main():
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل دریافت شد از CoinEx.")
+        print(f"✅ {len(df)} کندل دریافت شد.")
         print(f"📊 اولین قیمت: {df['close'].iloc[0]:.2f}")
         print(f"📊 آخرین قیمت: {df['close'].iloc[-1]:.2f}")
 
@@ -164,107 +159,75 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # محاسبه ATR
-    df['tr'] = np.maximum(
-        df['high'] - df['low'],
-        np.maximum(
-            abs(df['high'] - df['close'].shift(1)),
-            abs(df['low'] - df['close'].shift(1))
-        )
-    )
-    df['atr'] = df['tr'].rolling(14).mean()
-
-    # محاسبه MA20
+    # محاسبات
     df['ma20'] = df['close'].rolling(20).mean()
+    df['atr'] = (df['high'] - df['low']).rolling(14).mean()
+    df['rsi'] = 100 - (100 / (1 + df['close'].diff().clip(lower=0).rolling(14).mean() / 
+                              abs(df['close'].diff()).rolling(14).mean()))
 
-    # محاسبه RSI
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    rs = gain / loss
-    df['rsi'] = 100 - (100 / (1 + rs))
+    # تشخیص بازار رنج
+    df['range_market'] = (
+        (df['close'].rolling(5).std() / df['close']) < 0.02  # نوسان کم
+    ) & (df['atr'] < df['atr'].rolling(50).mean() * 1.1)       # ATR پایین
 
-    # حذف NaN
+    # محاسبه سطوح حمایت و مقاومت (میانگین متحرک 20 روزه + ATR)
+    df['support'] = df['ma20'] - 0.8 * df['atr']
+    df['resistance'] = df['ma20'] + 0.8 * df['atr']
+
     df.dropna(inplace=True)
 
-    # تشخیص روند اصلی بازار
-    trend = "up" if df['close'].iloc[-1] > df['ma20'].iloc[-1] else "down"
-
-    # تولید سیگنال
+    # تولید سیگنال — فقط در بازار رنج
     signals = []
-    last_signal = None
 
-    for i in range(len(df) - 1):
+    for i in range(1, len(df)):
         row = df.iloc[i]
+        prev = df.iloc[i-1]
         close = row['close']
-        atr = row['atr']
-        ma20 = row['ma20']
-        rsi = row['rsi']
         timestamp = row['timestamp']
 
-        # فقط معاملات همسو با روند ایجاد کن
-        if trend == "up":
-            # سیگنال Long فقط در روند صعودی
-            if close < row['open'] and close < ma20 - 0.5 * atr and rsi < 30:
-                if last_signal != 'Long':
-                    entry = close
-                    sl = entry - 1.5 * atr
-                    tp = entry + 3.0 * atr
-                    result = "در جریان"
-                    # بررسی نتیجه بر اساس تمام کندل‌های بعدی
-                    for j in range(i + 1, len(df)):
-                        if df['high'].iloc[j] >= tp:
-                            result = "TP"
-                            break
-                        elif df['low'].iloc[j] <= sl:
-                            result = "SL"
-                            break
-                    signals.append((
-                        'Long',
-                        round(entry, 2),
-                        round(sl, 2),
-                        round(tp, 2),
-                        result,
-                        timestamp.strftime("%Y-%m-%d %H:%M")
-                    ))
-                    last_signal = 'Long'
+        # فقط اگر بازار رنج باشد
+        if not row['range_market']:
+            continue
 
-        elif trend == "down":
-            # سیگنال Short فقط در روند نزولی
-            if close > row['open'] and close > ma20 + 0.5 * atr and rsi > 70:
-                if last_signal != 'Short':
-                    entry = close
-                    sl = entry + 1.5 * atr
-                    tp = entry - 3.0 * atr
-                    result = "در جریان"
-                    # بررسی نتیجه بر اساس تمام کندل‌های بعدی
-                    for j in range(i + 1, len(df)):
-                        if df['low'].iloc[j] <= tp:
-                            result = "TP"
-                            break
-                        elif df['high'].iloc[j] >= sl:
-                            result = "SL"
-                            break
-                    signals.append((
-                        'Short',
-                        round(entry, 2),
-                        round(sl, 2),
-                        round(tp, 2),
-                        result,
-                        timestamp.strftime("%Y-%m-%d %H:%M")
-                    ))
-                    last_signal = 'Short'
+        # 🔼 سیگنال Long: نزدیک به حمایت و RSI < 40
+        if close <= row['support'] and row['rsi'] < 40:
+            entry = close
+            sl = row['support'] - 0.5 * row['atr']
+            tp = row['ma20'] + 0.5 * row['atr']
+            result = "در جریان"
+            for j in range(i + 1, len(df)):
+                if df['high'].iloc[j] >= tp:
+                    result = "TP"
+                    break
+                elif df['low'].iloc[j] <= sl:
+                    result = "SL"
+                    break
+            signals.append(('Long', round(entry, 2), round(sl, 2), round(tp, 2), result, timestamp.strftime("%Y-%m-%d %H:%M")))
+
+        # 🔽 سیگنال Short: نزدیک به مقاومت و RSI > 60
+        elif close >= row['resistance'] and row['rsi'] > 60:
+            entry = close
+            sl = row['resistance'] + 0.5 * row['atr']
+            tp = row['ma20'] - 0.5 * row['atr']
+            result = "در جریان"
+            for j in range(i + 1, len(df)):
+                if df['low'].iloc[j] <= tp:
+                    result = "TP"
+                    break
+                elif df['high'].iloc[j] >= sl:
+                    result = "SL"
+                    break
+            signals.append(('Short', round(entry, 2), round(sl, 2), round(tp, 2), result, timestamp.strftime("%Y-%m-%d %H:%M")))
 
     # گزارش نهایی
     if signals:
         total = len(signals)
         tp_count = len([s for s in signals if s[4] == 'TP'])
         sl_count = len([s for s in signals if s[4] == 'SL'])
-        ongoing_count = len([s for s in signals if s[4] == 'در جریان'])
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (داده CoinEx)*
+📊 *گزارش بک‌تست معاملاتی (سیستم رنج بهینه)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
@@ -272,15 +235,14 @@ def main():
 📊 *تعداد معاملات:* `{total}`
 ✅ *حد سود:* `{tp_count}`
 ❌ *حد ضرر:* `{sl_count}`
-🔄 *در جریان:* `{ongoing_count}`
 📈 *نرخ برد:* `{win_rate:.1f}%`
-🎯 *نسبت ریسک به ریوارد:* `1:2`
+🎯 *استراتژی:* `بازار رنج (حمایت/مقاومت)`
 ────────────────────────────
         """
         for sig in signals:
             report += f"`[{sig[0]}]` 📅 {sig[5]} | ورود: `{sig[1]}` | SL: `{sig[2]}` | TP: `{sig[3]}` | نتیجه: `{sig[4]}`\n"
     else:
-        report = "❌ هیچ سیگنالی تولید نشد."
+        report = "❌ هیچ سیگنالی تولید نشد (بازار رنج تشخیص داده نشد یا شرایط ورود فراهم نشد)."
 
     print("\n" + report)
     send_telegram(telegram_token, telegram_chat_id, report)
