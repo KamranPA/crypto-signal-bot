@@ -1,7 +1,7 @@
-# src/regime_detection/range_detector.py
-import pandas as pd
+# src/regime_detection/trend_detector.py
+import ta
 
-def is_range_regime(df, window=20, threshold=0.7):
-    bb_width = df['high'] - df['low']
-    avg_width = bb_width.rolling(window).mean()
-    return (bb_width < avg_width * threshold).iloc[-1]
+def is_trend_regime(df, adx_threshold=25):
+    adx = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
+    df['adx'] = adx.adx()
+    return df['adx'].iloc[-1] > adx_threshold
