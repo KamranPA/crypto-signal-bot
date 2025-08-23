@@ -3,20 +3,19 @@ import pandas as pd
 
 def run_backtest(df, strategy_func):
     """
-    اجرای بک‌تست بر روی داده‌های تاریخی
+    اجرای بک‌تست و محاسبه آمار معاملاتی
     """
     trades = []
-    position = None  # موقعیت باز
+    position = None
 
-    # محاسبه SMA برای استراتژی (در صورت نیاز)
+    # محاسبه SMA برای استراتژی
     df['sma_20'] = df['close'].rolling(20).mean()
 
-    # شروع بک‌تست از کندل 50 به بعد (برای اطمینان از کافی بودن داده)
     for i in range(50, len(df)):
-        window = df.iloc[:i+1]  # داده‌های تا کندل فعلی
+        window = df.iloc[:i+1]
         signal_result = strategy_func(window)
 
-        # اگر سیگنال خرید داشته باشیم و موقعیتی نداشته باشیم
+        # ورود به معامله
         if signal_result['signal'] == 'BUY' and not position:
             position = {
                 'type': 'long',
@@ -26,7 +25,6 @@ def run_backtest(df, strategy_func):
                 'start_time': window.index[-1]
             }
 
-        # اگر سیگنال فروش داشته باشیم و موقعیتی نداشته باشیم
         elif signal_result['signal'] == 'SELL' and not position:
             position = {
                 'type': 'short',
@@ -36,10 +34,9 @@ def run_backtest(df, strategy_func):
                 'start_time': window.index[-1]
             }
 
-        # بررسی خروج از موقعیت
+        # خروج از معامله
         if position:
-            current = df.iloc[i]  # کندل فعلی
-
+            current = df.iloc[i]
             exit_price = None
             exit_type = None
 
@@ -59,12 +56,10 @@ def run_backtest(df, strategy_func):
                     exit_price = position['tp']
                     exit_type = 'TP'
 
-            # اگر خروجی اتفاق افتاد
             if exit_price is not None:
                 pnl = (exit_price / position['entry'] - 1) if position['type'] == 'long' \
                     else (1 - exit_price / position['entry'])
 
-                # ذخیره معامله با تمام فیلدها
                 trades.append({
                     'type': position['type'],
                     'entry': position['entry'],
@@ -73,23 +68,27 @@ def run_backtest(df, strategy_func):
                     'start': position['start_time'],
                     'end': current.name,
                     'pnl': pnl,
-                    'sl': position['sl'],      # ذخیره حد ضرر
-                    'tp': position['tp']       # ذخیره حد سود
+                    'sl': position['sl'],
+                    'tp': position['tp']
                 })
-                position = None  # موقعیت بسته شد
+                position = None
 
-    # محاسبه آمار معاملات
+    # محاسبه آمار
     total_trades = len(trades)
     winning_trades = len([t for t in trades if t['pnl'] > 0])
     losing_trades = total_trades - winning_trades
     win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
-    drawdown = (df['close'].cummax() - df['close']).max()
+
+    # 🔁 محاسبه Drawdown به صورت درصدی
+    peak = df['close'].cummax()
+    drawdown_pct = ((peak - df['close']) / peak) * 100
+    max_drawdown = drawdown_pct.max()
 
     return {
         'total_trades': total_trades,
         'winning_trades': winning_trades,
         'losing_trades': losing_trades,
         'win_rate': win_rate,
-        'drawdown': round(drawdown, 2),
-        'trades': trades  # شامل تمام معاملات
+        'drawdown': round(max_drawdown, 2),  # حالا درصد است
+        'trades': trades
     }
