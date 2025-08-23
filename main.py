@@ -62,14 +62,14 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
     url = "https://api.kucoin.com/api/v1/market/candles"
     all_data = []
     limit = 1500  # KuCoin حداکثر 1500 کندل می‌دهد
-    fetch_until = until_ms
+    fetch_until = until_ms // 1000  # به ثانیه تبدیل
 
-    while since_ms < fetch_until:
+    while since_ms < fetch_until * 1000:
         params = {
             'symbol': market,
             'granularity': granularity,
-            'from': since_ms // 1000,
-            'to': fetch_until // 1000
+            'from': since_ms // 1000,  # به ثانیه تبدیل
+            'to': fetch_until  # به ثانیه
         }
 
         try:
@@ -79,7 +79,7 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not data:
+            if not 
                 print("⚠️ پاسخ خالی است.")
                 break
 
@@ -100,7 +100,7 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
                 ])
 
             # به‌روزرسانی برای درخواست بعدی
-            fetch_until = int(candles[-1][0]) * 1000
+            fetch_until = int(candles[-1][0])
 
             if len(candles) < limit:
                 break
@@ -109,7 +109,7 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
             print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_data:
+    if not all_data
         return None
 
     return all_data
