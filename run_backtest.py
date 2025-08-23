@@ -23,6 +23,24 @@ if __name__ == "__main__":
     print("📊 اجرای بک‌تست...")
     report = run_backtest(df, generate_signal)
 
+    # 🔍 تحلیل عملکرد بر اساس رژیم
+    trades = report['trades']
+    by_regime = {}
+    for trade in trades:
+        reg = trade.get('regime', 'Unknown')
+        by_regime[reg] = by_regime.get(reg, {'total': 0, 'wins': 0})
+        by_regime[reg]['total'] += 1
+        if trade['pnl'] > 0:
+            by_regime[reg]['wins'] += 1
+
+    # اضافه کردن آمار رژیم به گزارش
+    regime_stats = []
+    for reg, data in by_regime.items():
+        win_rate = round(data['wins'] / data['total'] * 100, 2)
+        regime_stats.append(f"{reg}: {data['total']} معامله، {win_rate}% موفق")
+
+    report['regime_analysis'] = "; ".join(regime_stats)
+
     print("📨 ارسال گزارش به تلگرام...")
     send_telegram_report(report)
 
