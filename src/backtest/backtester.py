@@ -4,6 +4,7 @@ import pandas as pd
 def run_backtest(df, strategy_func):
     """
     اجرای بک‌تست با شبیه‌سازی معاملات با لوریج 10x و سرمایه 1000 دلار
+    فقط معاملات با SL/TP منطقی ذخیره می‌شوند
     """
     trades = []
     position = None
@@ -19,23 +20,43 @@ def run_backtest(df, strategy_func):
 
         # ورود به معامله
         if signal_result['signal'] == 'BUY' and not position:
+            entry = signal_result['entry']
+            sl = signal_result['stop_loss']
+            tp = signal_result['take_profit']
+
+            # ✅ بررسی منطقی بودن SL و TP برای BUY
+            if sl >= entry or tp <= entry or sl >= tp:
+                print(f"⚠️ سیگنال BUY با SL/TP غیرمنطقی نادیده گرفته شد: entry={entry:.2f}, SL={sl:.2f}, TP={tp:.2f}")
+                continue
+
             position = {
                 'type': 'long',
-                'entry': signal_result['entry'],
-                'sl': signal_result['stop_loss'],
-                'tp': signal_result['take_profit'],
+                'entry': entry,
+                'sl': sl,
+                'tp': tp,
                 'start_time': window.index[-1],
-                'capital': initial_capital
+                'capital': initial_capital,
+                'regime': signal_result.get('regime', 'Unknown')
             }
 
         elif signal_result['signal'] == 'SELL' and not position:
+            entry = signal_result['entry']
+            sl = signal_result['stop_loss']
+            tp = signal_result['take_profit']
+
+            # ✅ بررسی منطقی بودن SL و TP برای SELL
+            if sl <= entry or tp >= entry or sl <= tp:
+                print(f"⚠️ سیگنال SELL با SL/TP غیرمنطقی نادیده گرفته شد: entry={entry:.2f}, SL={sl:.2f}, TP={tp:.2f}")
+                continue
+
             position = {
                 'type': 'short',
-                'entry': signal_result['entry'],
-                'sl': signal_result['stop_loss'],
-                'tp': signal_result['take_profit'],
+                'entry': entry,
+                'sl': sl,
+                'tp': tp,
                 'start_time': window.index[-1],
-                'capital': initial_capital
+                'capital': initial_capital,
+                'regime': signal_result.get('regime', 'Unknown')
             }
 
         # خروج از معامله
@@ -61,17 +82,17 @@ def run_backtest(df, strategy_func):
                     exit_type = 'TP'
 
             if exit_price is not None:
-                # محاسبه درصد تغییر قیمت
+                # محاسبه بازدهی با لوریج
                 if position['type'] == 'long':
                     price_change_pct = (exit_price - position['entry']) / position['entry']
                 else:
                     price_change_pct = (position['entry'] - exit_price) / position['entry']
 
-                # اعمال لوریج
                 leveraged_return = price_change_pct * leverage
                 pnl_usd = position['capital'] * leveraged_return
                 final_capital = position['capital'] + pnl_usd
 
+                # ✅ فقط اگر SL/TP معتبر بود، ذخیره کن
                 trades.append({
                     'type': position['type'],
                     'entry': position['entry'],
@@ -84,23 +105,22 @@ def run_backtest(df, strategy_func):
                     'capital_after': round(final_capital, 2),
                     'sl': position['sl'],
                     'tp': position['tp'],
-                    'regime': signal_result.get('regime', 'Unknown')
+                    'regime': position['regime']
                 })
                 position = None
 
-    # آمار کلی
+    # محاسبه آمار کلی
     total_trades = len(trades)
     winning_trades = len([t for t in trades if t['pnl_usd'] > 0])
     losing_trades = total_trades - winning_trades
     win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
 
-    # Drawdown
+    # Drawdown بر اساس منحنی سرمایه
     capital_curve = [initial_capital] + [t['capital_after'] for t in trades]
     peak = pd.Series(capital_curve).cummax()
     drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
     max_drawdown = drawdown_pct.max()
 
-    # کل سود/زیان
     total_pnl_usd = sum(t['pnl_usd'] for t in trades)
 
     return {
