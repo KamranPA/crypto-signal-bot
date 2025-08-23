@@ -44,76 +44,75 @@ def send_telegram(token, chat_id, text):
         except Exception as e:
             print(f"❌ خطای شبکه: {e}")
 
-def fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms):
+def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده واقعی از Binance (API عمومی) با Proxy واقعی
+    دریافت داده OHLCV از API عمومی KuCoin
     """
-    # تبدیل نماد: BTC/USDT → BTCUSDT
-    market = symbol.replace('/', '').upper()
+    # تبدیل نماد: BTC/USDT → BTC-USDT
+    market = symbol.replace('/', '-')
 
     # مپ تایم‌فریم
     tf_map = {
-        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
-        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
-        '6h': '6h', '12h': '12h', '1d': '1d', '1w': '1w'
+        '1m': '1', '3m': '3', '5m': '5', '15m': '15',
+        '30m': '30', '1h': '60', '2h': '120', '4h': '240',
+        '6h': '360', '12h': '720', '1d': '1D', '1w': '1W'
     }
-    interval = tf_map.get(timeframe.lower(), '1h')
+    granularity = tf_map.get(timeframe.lower(), '60')  # پیش‌فرض: 1h
 
-    url = "https://api.binance.com/api/v3/klines"
+    url = "https://api.kucoin.com/api/v1/market/candles"
     all_data = []
-    limit = 1000
-    fetch_since = since_ms
+    limit = 1500  # KuCoin حداکثر 1500 کندل می‌دهد
+    fetch_until = until_ms
 
-    # Proxy واقعی (مثلاً از سرویس‌های مثل HideMyAss, NordVPN, Proxifier)
-    proxies = {
-        'http': 'http://proxy.example.com:8080',
-        'https': 'https://proxy.example.com:8080'
-    }
-
-    while fetch_since < until_ms:
+    while since_ms < fetch_until:
         params = {
             'symbol': market,
-            'interval': interval,
-            'startTime': fetch_since,
-            'endTime': until_ms,
-            'limit': limit
+            'granularity': granularity,
+            'from': since_ms // 1000,
+            'to': fetch_until // 1000
         }
 
         try:
-            response = requests.get(url, params=params, proxies=proxies, timeout=15)
+            response = requests.get(url, params=params, timeout=15)
             if response.status_code != 200:
                 print(f"❌ خطا: {response.status_code} - {response.text}")
                 break
 
             data = response.json()
-            if not data:
+            if not 
+                print("⚠️ پاسخ خالی است.")
                 break
 
-            count = len(data)
-            all_data.extend(data)
-            fetch_since = data[-1][0] + 1
+            # داده در ['data'] است
+            candles = data.get('data', [])
+            if not 
+                break
 
-            if count < limit:
+            # فرمت: [time, open, close, high, low, volume, turnover]
+            for item in candles:
+                all_data.append([
+                    int(item[0]) * 1000,  # زمان به میلی‌ثانیه
+                    float(item[1]),
+                    float(item[3]),
+                    float(item[4]),
+                    float(item[2]),
+                    float(item[5])
+                ])
+
+            # به‌روزرسانی برای درخواست بعدی
+            fetch_until = int(candles[-1][0]) * 1000
+
+            if len(candles) < limit:
                 break
 
         except Exception as e:
             print(f"❌ خطای شبکه: {e}")
             break
 
-    if not all_data:
+    if not all_
         return None
 
-    ohlcv = []
-    for item in all_data:
-        ohlcv.append([
-            int(item[0]),
-            float(item[1]),
-            float(item[2]),
-            float(item[3]),
-            float(item[4]),
-            float(item[5])
-        ])
-    return ohlcv
+    return all_data
 
 def main():
     symbol = os.getenv("SYMBOL") or "BTC/USDT"
@@ -137,11 +136,11 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده از Binance (داده واقعی)
+    # دریافت داده از KuCoin
     try:
-        data = fetch_binance_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not data:
-            report = "❌ هیچ داده‌ای از Binance دریافت نشد. ممکن است نماد اشتباه باشد."
+        data = fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms)
+        if not 
+            report = "❌ هیچ داده‌ای از KuCoin دریافت نشد. ممکن است نماد اشتباه باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -156,7 +155,7 @@ def main():
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل واقعی دریافت شد از Binance.")
+        print(f"✅ {len(df)} کندل دریافت شد از KuCoin.")
         print(f"📊 اولین قیمت: {df['close'].iloc[0]:.2f}")
         print(f"📊 آخرین قیمت: {df['close'].iloc[-1]:.2f}")
 
@@ -260,7 +259,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (داده واقعی Binance)*
+📊 *گزارش بک‌تست معاملاتی (داده KuCoin)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
