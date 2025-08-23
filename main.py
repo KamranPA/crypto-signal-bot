@@ -139,7 +139,7 @@ def main():
     # دریافت داده از KuCoin
     try:
         data = fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not 
+        if not data:
             report = "❌ هیچ داده‌ای از KuCoin دریافت نشد. ممکن است نماد اشتباه باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
