@@ -11,10 +11,14 @@ on:
         description: 'تایم فریم (15m, 30m, 1h)'
         required: true
         default: '1h'
-      days:
-        description: 'تعداد روزهای داده (مثلاً 30)'
+      start_date:
+        description: 'تاریخ شروع (YYYY-MM-DD)'
         required: true
-        default: '30'
+        default: '2024-01-01'
+      end_date:
+        description: 'تاریخ پایان (YYYY-MM-DD)'
+        required: true
+        default: '2024-03-01'
 
 jobs:
   backtest:
@@ -35,11 +39,9 @@ jobs:
         env:
           SYMBOL: ${{ inputs.symbol }}
           TIMEFRAME: ${{ inputs.timeframe }}
-          DAYS: ${{ inputs.days }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python run_backtest.py
-
-      - name: Success
-        run: echo "✅ بک‌تست با موفقیت اجرا شد."
