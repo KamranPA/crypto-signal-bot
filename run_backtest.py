@@ -13,11 +13,11 @@ if __name__ == "__main__":
 
     since = int((datetime.now() - timedelta(days=days)).timestamp() * 1000)
 
-    print(f"🔍 دریافت داده از CoinEx برای {symbol} | تایم فریم: {timeframe} | {days} روز گذشته")
+    print(f"🔍 دریافت داده از CoinEx: {symbol} | {timeframe} | {days} روز")
     df = fetch_ohlcv(symbol, timeframe, since)
 
     if df.empty:
-        print("⚠️ داده‌ای دریافت نشد. لطفاً نماد یا تایم فریم را بررسی کنید.")
+        print("❌ داده‌ای دریافت نشد. نماد یا تایم فریم را بررسی کنید.")
         exit(1)
 
     print("📊 اجرای بک‌تست...")
@@ -26,4 +26,4 @@ if __name__ == "__main__":
     print("📨 ارسال گزارش به تلگرام...")
     send_telegram_report(report)
 
-    print("✅ بک‌تست با موفقیت انجام شد.")
+    print("✅ اجرا با موفقیت کامل شد.")
