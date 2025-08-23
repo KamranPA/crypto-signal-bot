@@ -2,37 +2,44 @@
 import pandas as pd
 
 def run_backtest(df, strategy_func):
+    """
+    اجرای بک‌تست بر روی داده‌های تاریخی
+    """
     trades = []
-    position = None
+    position = None  # موقعیت باز
 
-    # اضافه کردن SMA برای استراتژی
+    # محاسبه SMA برای استراتژی (در صورت نیاز)
     df['sma_20'] = df['close'].rolling(20).mean()
 
+    # شروع بک‌تست از کندل 50 به بعد (برای اطمینان از کافی بودن داده)
     for i in range(50, len(df)):
-        window = df.iloc[:i+1]
-        result = strategy_func(window)
+        window = df.iloc[:i+1]  # داده‌های تا کندل فعلی
+        signal_result = strategy_func(window)
 
-        if result['signal'] == 'BUY' and not position:
+        # اگر سیگنال خرید داشته باشیم و موقعیتی نداشته باشیم
+        if signal_result['signal'] == 'BUY' and not position:
             position = {
                 'type': 'long',
-                'entry': result['entry'],
-                'sl': result['stop_loss'],
-                'tp': result['take_profit'],
+                'entry': signal_result['entry'],
+                'sl': signal_result['stop_loss'],
+                'tp': signal_result['take_profit'],
                 'start_time': window.index[-1]
             }
 
-        elif result['signal'] == 'SELL' and not position:
+        # اگر سیگنال فروش داشته باشیم و موقعیتی نداشته باشیم
+        elif signal_result['signal'] == 'SELL' and not position:
             position = {
                 'type': 'short',
-                'entry': result['entry'],
-                'sl': result['stop_loss'],
-                'tp': result['take_profit'],
+                'entry': signal_result['entry'],
+                'sl': signal_result['stop_loss'],
+                'tp': signal_result['take_profit'],
                 'start_time': window.index[-1]
             }
 
-        # بررسی خروج
+        # بررسی خروج از موقعیت
         if position:
-            current = df.iloc[i]
+            current = df.iloc[i]  # کندل فعلی
+
             exit_price = None
             exit_type = None
 
@@ -52,9 +59,12 @@ def run_backtest(df, strategy_func):
                     exit_price = position['tp']
                     exit_type = 'TP'
 
-            if exit_price:
+            # اگر خروجی اتفاق افتاد
+            if exit_price is not None:
                 pnl = (exit_price / position['entry'] - 1) if position['type'] == 'long' \
                     else (1 - exit_price / position['entry'])
+
+                # ذخیره معامله با تمام فیلدها
                 trades.append({
                     'type': position['type'],
                     'entry': position['entry'],
@@ -62,21 +72,24 @@ def run_backtest(df, strategy_func):
                     'exit_type': exit_type,
                     'start': position['start_time'],
                     'end': current.name,
-                    'pnl': pnl
+                    'pnl': pnl,
+                    'sl': position['sl'],      # ذخیره حد ضرر
+                    'tp': position['tp']       # ذخیره حد سود
                 })
-                position = None
+                position = None  # موقعیت بسته شد
 
-    # محاسبه آمار
-    total = len(trades)
-    wins = len([t for t in trades if t['pnl'] > 0])
-    win_rate = round(wins / total * 100, 2) if total > 0 else 0
+    # محاسبه آمار معاملات
+    total_trades = len(trades)
+    winning_trades = len([t for t in trades if t['pnl'] > 0])
+    losing_trades = total_trades - winning_trades
+    win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
     drawdown = (df['close'].cummax() - df['close']).max()
 
     return {
-        'total_trades': total,
-        'winning_trades': wins,
-        'losing_trades': total - wins,
+        'total_trades': total_trades,
+        'winning_trades': winning_trades,
+        'losing_trades': losing_trades,
         'win_rate': win_rate,
         'drawdown': round(drawdown, 2),
-        'trades': trades
+        'trades': trades  # شامل تمام معاملات
     }
