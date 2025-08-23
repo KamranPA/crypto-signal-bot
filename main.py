@@ -79,7 +79,7 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not 
+            if not data:
                 print("⚠️ پاسخ خالی است.")
                 break
 
