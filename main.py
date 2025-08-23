@@ -133,7 +133,7 @@ def main():
     # دریافت داده
     try:
         data = fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms)
-        if not 
+        if not data:
             report = "❌ هیچ داده‌ای از CoinEx دریافت نشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
