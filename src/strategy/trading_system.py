@@ -8,7 +8,6 @@ def generate_signal(df):
     if len(df) < 50:
         return {'signal': None, 'regime': 'Insufficient Data'}
 
-    # محاسبه شاخص‌ها
     df['ema_21'] = ta.trend.EMAIndicator(df['close'], window=21).ema_indicator()
     df['atr'] = ta.volatility.AverageTrueRange(
         df['high'], df['low'], df['close'], window=14
@@ -16,7 +15,7 @@ def generate_signal(df):
 
     last = df.iloc[-1]
     prev = df.iloc[-2]
-    volume_avg = df['volume'].rolling(20).mean().iloc[-1]
+    atr = last['atr']
 
     in_trend = is_trend_regime(df)
     in_range = is_range_regime(df)
@@ -26,28 +25,26 @@ def generate_signal(df):
     regime = 'Uncertain'
 
     # 🔹 روند صعودی
-    if in_trend and last['close'] > last['ema_21']:
-        if prev['close'] <= prev['ema_21'] and last['volume'] > volume_avg:
-            signal = 'BUY'
-            entry = last['close']
-            sl = entry - 1.5 * last['atr']  # پایین‌تر از ورود
-            tp = entry + 2.5 * last['atr']  # بالاتر از ورود
+    if in_trend and last['close'] > last['ema_21'] and prev['close'] <= prev['ema_21']:
+        signal = 'BUY'
+        entry = last['close']
+        sl = entry - 1.5 * atr
+        tp = entry + 2.5 * atr
+        regime = 'Trend_Up'
 
-            # ✅ بررسی منطقی بودن
-            if sl >= entry or tp <= entry or sl >= tp:
-                return {'signal': None, 'regime': 'Invalid SL/TP'}
+        if sl >= entry or tp <= entry or sl >= tp:
+            return {'signal': None, 'regime': 'Invalid SL/TP (BUY)'}
 
     # 🔹 روند نزولی
-    elif in_trend and last['close'] < last['ema_21']:
-        if prev['close'] >= prev['ema_21'] and last['volume'] > volume_avg:
-            signal = 'SELL'
-            entry = last['close']
-            sl = entry + 1.5 * last['atr']  # بالاتر از ورود
-            tp = entry - 2.5 * last['atr']  # پایین‌تر از ورود
+    elif in_trend and last['close'] < last['ema_21'] and prev['close'] >= prev['ema_21']:
+        signal = 'SELL'
+        entry = last['close']
+        sl = entry + 1.5 * atr
+        tp = entry - 2.5 * atr
+        regime = 'Trend_Down'
 
-            # ✅ بررسی منطقی بودن
-            if sl <= entry or tp >= entry or sl <= tp:
-                return {'signal': None, 'regime': 'Invalid SL/TP'}
+        if sl <= entry or tp >= entry or sl <= tp:
+            return {'signal': None, 'regime': 'Invalid SL/TP (SELL)'}
 
     # 🔹 رنج
     elif in_range:
@@ -57,20 +54,22 @@ def generate_signal(df):
         if abs(last['close'] - lower) / lower < 0.005:
             signal = 'BUY'
             entry = last['close']
-            sl = lower * 0.995
-            tp = (lower + upper) / 2
+            sl = lower * 0.99
+            tp = (entry + (upper - entry) / 2)
+            regime = 'Range'
 
             if sl >= entry or tp <= entry or sl >= tp:
-                return {'signal': None, 'regime': 'Invalid SL/TP'}
+                return {'signal': None, 'regime': 'Invalid SL/TP (Range BUY)'}
 
         elif abs(last['close'] - upper) / upper < 0.005:
             signal = 'SELL'
             entry = last['close']
-            sl = upper * 1.005
-            tp = (lower + upper) / 2
+            sl = upper * 1.01
+            tp = (entry - (entry - lower) / 2)
+            regime = 'Range'
 
             if sl <= entry or tp >= entry or sl <= tp:
-                return {'signal': None, 'regime': 'Invalid SL/TP'}
+                return {'signal': None, 'regime': 'Invalid SL/TP (Range SELL)'}
 
     # 🔹 شکست
     elif in_breakout:
@@ -81,19 +80,21 @@ def generate_signal(df):
             signal = 'BUY'
             entry = last['close']
             sl = recent_high * 0.99
-            tp = entry + 3.0 * last['atr']
+            tp = entry + 3.0 * atr
+            regime = 'Breakout'
 
             if sl >= entry or tp <= entry or sl >= tp:
-                return {'signal': None, 'regime': 'Invalid SL/TP'}
+                return {'signal': None, 'regime': 'Invalid SL/TP (Breakout BUY)'}
 
         elif last['low'] < recent_low:
             signal = 'SELL'
             entry = last['close']
             sl = recent_low * 1.01
-            tp = entry - 3.0 * last['atr']
+            tp = entry - 3.0 * atr
+            regime = 'Breakout'
 
             if sl <= entry or tp >= entry or sl <= tp:
-                return {'signal': None, 'regime': 'Invalid SL/TP'}
+                return {'signal': None, 'regime': 'Invalid SL/TP (Breakout SELL)'}
 
     return {
         'signal': signal,
