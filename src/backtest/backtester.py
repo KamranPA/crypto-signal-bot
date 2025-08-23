@@ -3,13 +3,15 @@ import pandas as pd
 
 def run_backtest(df, strategy_func):
     """
-    اجرای بک‌تست و محاسبه آمار معاملاتی
+    اجرای بک‌تست با شبیه‌سازی معاملات با لوریج 10x و سرمایه 1000 دلار
     """
     trades = []
     position = None
+    initial_capital = 1000.0  # دلار
+    leverage = 10
 
-    # محاسبه SMA برای استراتژی
-    df['sma_20'] = df['close'].rolling(20).mean()
+    # محاسبه EMA برای استراتژی
+    df['ema_21'] = df['close'].rolling(21).mean()
 
     for i in range(50, len(df)):
         window = df.iloc[:i+1]
@@ -22,7 +24,8 @@ def run_backtest(df, strategy_func):
                 'entry': signal_result['entry'],
                 'sl': signal_result['stop_loss'],
                 'tp': signal_result['take_profit'],
-                'start_time': window.index[-1]
+                'start_time': window.index[-1],
+                'capital': initial_capital
             }
 
         elif signal_result['signal'] == 'SELL' and not position:
@@ -31,7 +34,8 @@ def run_backtest(df, strategy_func):
                 'entry': signal_result['entry'],
                 'sl': signal_result['stop_loss'],
                 'tp': signal_result['take_profit'],
-                'start_time': window.index[-1]
+                'start_time': window.index[-1],
+                'capital': initial_capital
             }
 
         # خروج از معامله
@@ -57,8 +61,16 @@ def run_backtest(df, strategy_func):
                     exit_type = 'TP'
 
             if exit_price is not None:
-                pnl = (exit_price / position['entry'] - 1) if position['type'] == 'long' \
-                    else (1 - exit_price / position['entry'])
+                # محاسبه درصد تغییر قیمت
+                if position['type'] == 'long':
+                    price_change_pct = (exit_price - position['entry']) / position['entry']
+                else:
+                    price_change_pct = (position['entry'] - exit_price) / position['entry']
+
+                # اعمال لوریج
+                leveraged_return = price_change_pct * leverage
+                pnl_usd = position['capital'] * leveraged_return
+                final_capital = position['capital'] + pnl_usd
 
                 trades.append({
                     'type': position['type'],
@@ -67,28 +79,37 @@ def run_backtest(df, strategy_func):
                     'exit_type': exit_type,
                     'start': position['start_time'],
                     'end': current.name,
-                    'pnl': pnl,
+                    'pnl_percent': round(leveraged_return * 100, 2),
+                    'pnl_usd': round(pnl_usd, 2),
+                    'capital_after': round(final_capital, 2),
                     'sl': position['sl'],
-                    'tp': position['tp']
+                    'tp': position['tp'],
+                    'regime': signal_result.get('regime', 'Unknown')
                 })
                 position = None
 
-    # محاسبه آمار
+    # آمار کلی
     total_trades = len(trades)
-    winning_trades = len([t for t in trades if t['pnl'] > 0])
+    winning_trades = len([t for t in trades if t['pnl_usd'] > 0])
     losing_trades = total_trades - winning_trades
     win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
 
-    # 🔁 محاسبه Drawdown به صورت درصدی
-    peak = df['close'].cummax()
-    drawdown_pct = ((peak - df['close']) / peak) * 100
+    # Drawdown
+    capital_curve = [initial_capital] + [t['capital_after'] for t in trades]
+    peak = pd.Series(capital_curve).cummax()
+    drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
     max_drawdown = drawdown_pct.max()
+
+    # کل سود/زیان
+    total_pnl_usd = sum(t['pnl_usd'] for t in trades)
 
     return {
         'total_trades': total_trades,
         'winning_trades': winning_trades,
         'losing_trades': losing_trades,
         'win_rate': win_rate,
-        'drawdown': round(max_drawdown, 2),  # حالا درصد است
+        'drawdown': round(max_drawdown, 2),
+        'total_pnl_usd': round(total_pnl_usd, 2),
+        'final_capital': round(capital_curve[-1], 2),
         'trades': trades
     }
