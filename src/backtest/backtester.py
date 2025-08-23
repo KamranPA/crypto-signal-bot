@@ -5,31 +5,28 @@ def run_backtest(df, strategy_func):
     trades = []
     position = None
 
-    for i in range(50, len(df)):  # شروع بعد از محاسبه شاخص‌ها
+    # اضافه کردن SMA برای استراتژی
+    df['sma_20'] = df['close'].rolling(20).mean()
+
+    for i in range(50, len(df)):
         window = df.iloc[:i+1]
-        result = strategy_func(window.copy())
+        result = strategy_func(window)
 
         if result['signal'] == 'BUY' and not position:
-            entry = result['entry']
-            sl = result['stop_loss']
-            tp = result['take_profit']
             position = {
                 'type': 'long',
-                'entry': entry,
-                'sl': sl,
-                'tp': tp,
+                'entry': result['entry'],
+                'sl': result['stop_loss'],
+                'tp': result['take_profit'],
                 'start_time': window.index[-1]
             }
 
         elif result['signal'] == 'SELL' and not position:
-            entry = result['entry']
-            sl = result['stop_loss']
-            tp = result['take_profit']
             position = {
                 'type': 'short',
-                'entry': entry,
-                'sl': sl,
-                'tp': tp,
+                'entry': result['entry'],
+                'sl': result['stop_loss'],
+                'tp': result['take_profit'],
                 'start_time': window.index[-1]
             }
 
@@ -56,6 +53,8 @@ def run_backtest(df, strategy_func):
                     exit_type = 'TP'
 
             if exit_price:
+                pnl = (exit_price / position['entry'] - 1) if position['type'] == 'long' \
+                    else (1 - exit_price / position['entry'])
                 trades.append({
                     'type': position['type'],
                     'entry': position['entry'],
@@ -63,22 +62,21 @@ def run_backtest(df, strategy_func):
                     'exit_type': exit_type,
                     'start': position['start_time'],
                     'end': current.name,
-                    'pnl': (exit_price / position['entry'] - 1) if position['type']=='long' else (1 - exit_price / position['entry'])
+                    'pnl': pnl
                 })
                 position = None
 
     # محاسبه آمار
-    df_trades = pd.DataFrame(trades)
-    total = len(df_trades)
-    wins = len(df_trades[df_trades['pnl'] > 0])
-    win_rate = wins / total if total > 0 else 0
+    total = len(trades)
+    wins = len([t for t in trades if t['pnl'] > 0])
+    win_rate = round(wins / total * 100, 2) if total > 0 else 0
     drawdown = (df['close'].cummax() - df['close']).max()
 
     return {
         'total_trades': total,
         'winning_trades': wins,
         'losing_trades': total - wins,
-        'win_rate': round(win_rate * 100, 2),
+        'win_rate': win_rate,
         'drawdown': round(drawdown, 2),
         'trades': trades
     }
