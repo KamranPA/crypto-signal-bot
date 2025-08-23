@@ -1,4 +1,4 @@
-# src/utils/telegram_notifier.py (نسخه اصلاح‌شده)
+# src/utils/telegram_notifier.py
 import requests
 import os
 from datetime import datetime
@@ -12,14 +12,11 @@ def send_telegram_report(report):
         return
 
     last_trade = report['trades'][-1] if report['trades'] else None
-
-    # اطلاعات عمومی
     symbol = os.getenv("SYMBOL", "BTC/USDT")
     timeframe = os.getenv("TIMEFRAME", "1h")
     days = os.getenv("DAYS", "30")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # پیام با فرمت حرفه‌ای
     message = f"""
 🚀 *سیگنال جدید سیستم معاملاتی* 🚀
 
@@ -28,22 +25,25 @@ def send_telegram_report(report):
 ⏰ تایم فریم: {timeframe}
 🗓 بازه زمانی: {days} روز
 
-📈 *آمار معاملاتی*:
+📈 *آمار کلی*:
 • تعداد کل معاملات: {report['total_trades']}
 • معاملات سودده: {report['winning_trades']} ✅
 • معاملات ضررده: {report['losing_trades']} ❌
 • نرخ موفقیت: {report['win_rate']}% 💯
 • Drawdown: {report['drawdown']}% 📉
 
+🔍 *تحلیل بر اساس رژیم*:
+{report.get('regime_analysis', 'N/A')}
+
 🎯 *آخرین معامله*:
-• نوع: {last_trade['type'].upper()} 📈
+• نوع: {last_trade['type'].upper() if last_trade else 'N/A'} 📈
+• رژیم: {last_trade.get('regime', 'N/A')}
 • نقطه ورود: {last_trade['entry']:.2f} 💵
 • حد ضرر (SL): {last_trade.get('sl', 'N/A'):.2f} ⚠️
 • حد سود (TP): {last_trade.get('tp', 'N/A'):.2f} 🎯
-• خروج: {last_trade['exit_type']} 🔚
+• خروج: {last_trade['exit_type'] if last_trade else 'N/A'} 🔚
 """
 
-    # ارسال به تلگرام
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -54,7 +54,7 @@ def send_telegram_report(report):
     try:
         response = requests.post(url, data=payload, timeout=10)
         if response.status_code == 200:
-            print("✅ گزارش با موفقیت ارسال شد.")
+            print("✅ گزارش با موفقیت به تلگرام ارسال شد.")
         else:
             print(f"❌ خطای تلگرام: {response.status_code}")
     except Exception as e:
