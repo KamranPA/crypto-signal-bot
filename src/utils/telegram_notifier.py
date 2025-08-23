@@ -15,7 +15,6 @@ def send_telegram_report(report):
     timeframe = os.getenv("TIMEFRAME", "1h")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # پیام اصلی
     message = f"""
 🚀 *سیگنال جدید سیستم معاملاتی* 🚀
 
@@ -24,32 +23,38 @@ def send_telegram_report(report):
 ⏰ تایم فریم: {timeframe}
 🗓 بازه: {report.get('start_date', 'N/A')} تا {report.get('end_date', 'N/A')}
 
+🏦 *مدیریت سرمایه (1000$ + لوریج 10x)*
+• سرمایه اولیه: $1000
+• سرمایه نهایی: ${report['final_capital']:,.2f}
+• سود/زیان کل: ${report['total_pnl_usd']:,.2f} {'🟢' if report['total_pnl_usd'] > 0 else '🔴'}
+
 📈 *آمار کلی*:
 • تعداد معاملات: {report['total_trades']}
 • سودده: {report['winning_trades']} ✅
 • ضررده: {report['losing_trades']} ❌
 • نرخ موفقیت: {report['win_rate']}% 💯
-• Drawdown: {report['drawdown']}% 📉
+• حداکثر Drawdown: {report['drawdown']}% 📉
 """
 
-    # اضافه کردن جزئیات معاملات
     if report['trades']:
         message += "\n📋 *جزئیات معاملات*:\n"
         for i, trade in enumerate(report['trades'], 1):
-            entry = trade.get('entry', 'N/A')
-            sl = trade.get('sl', 'N/A')
-            tp = trade.get('tp', 'N/A')
+            entry = trade['entry']
+            sl = trade['sl']
+            tp = trade['tp']
             start = trade['start'].strftime("%Y-%m-%d %H:%M")
-            exit_type = trade['exit_type']
-            pnl_sign = "🟢" if trade['pnl'] > 0 else "🔴"
+            pnl_usd = trade['pnl_usd']
+            pnl_percent = trade['pnl_percent']
+            emoji = "🟢" if pnl_usd > 0 else "🔴"
 
             message += f"""
-{i}. {pnl_sign} {trade['type'].upper()}
+{i}. {emoji} {trade['type'].upper()} ({trade.get('regime', 'N/A')})
    📅 {start}
    💵 ورود: {entry:.2f}
    ⚠️ حد ضرر: {sl:.2f}
    🎯 حد سود: {tp:.2f}
-   🔚 خروج: {exit_type}
+   💹 سود/زیان: ${pnl_usd:,.2f} ({pnl_percent:+.2f}%)
+   🔚 خروج: {trade['exit_type']}
 """
     else:
         message += "\n📋 *هیچ معامله‌ای انجام نشد.*"
