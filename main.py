@@ -112,7 +112,7 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
     if not all_data:
         return None
 
-    return all_data:
+    return all_data
 
 def main():
     symbol = os.getenv("SYMBOL") or "BTC/USDT"
