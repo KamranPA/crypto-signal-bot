@@ -14,26 +14,28 @@ def date_to_milliseconds(date_str):
 if __name__ == "__main__":
     symbol = os.getenv("SYMBOL", "BTC/USDT")
     timeframe = os.getenv("TIMEFRAME", "1h")
-    start_date = os.getenv("START_DATE", "2024-01-01")
-    end_date = os.getenv("END_DATE", "2024-03-01")
+    start_date = os.getenv("START_DATE", "2024-05-01")
+    end_date = os.getenv("END_DATE", "2024-06-01")
+
+    print(f"📅 بازه زمانی: {start_date} تا {end_date}")
+    print(f"📊 نماد: {symbol} | تایم فریم: {timeframe}")
 
     since = date_to_milliseconds(start_date)
     until = date_to_milliseconds(end_date)
 
-    print(f"🔍 دریافت داده از {start_date} تا {end_date} | نماد: {symbol} | تایم فریم: {timeframe}")
     df = fetch_ohlcv(symbol, timeframe, since, limit=1000)
-
-    # فیلتر تا تاریخ پایان
     df = df[df.index <= datetime.strptime(end_date, "%Y-%m-%d")]
 
     if df.empty:
         print("❌ داده‌ای دریافت نشد. نماد یا بازه زمانی را بررسی کنید.")
         exit(1)
 
+    print(f"✅ {len(df)} کندل دریافت شد.")
     print("📊 اجرای بک‌تست...")
+
     report = run_backtest(df, generate_signal)
 
-    # اضافه کردن بازه زمانی به گزارش
+    # اضافه کردن بازه به گزارش
     report['start_date'] = start_date
     report['end_date'] = end_date
 
