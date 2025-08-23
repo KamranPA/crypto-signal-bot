@@ -44,32 +44,32 @@ def send_telegram(token, chat_id, text):
         except Exception as e:
             print(f"❌ خطای شبکه: {e}")
 
-def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
+def fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms):
     """
-    دریافت داده OHLCV از API عمومی KuCoin
+    دریافت داده OHLCV از API عمومی CoinEx
     """
-    # تبدیل نماد: BTC/USDT → BTC-USDT
-    market = symbol.replace('/', '-')
+    # تبدیل نماد: BTC/USDT → btcusdt
+    market = symbol.replace('/', '').lower()
 
     # مپ تایم‌فریم
     tf_map = {
-        '1m': '1', '3m': '3', '5m': '5', '15m': '15',
-        '30m': '30', '1h': '60', '2h': '120', '4h': '240',
-        '6h': '360', '12h': '720', '1d': '1D', '1w': '1W'
+        '1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min',
+        '30m': '30min', '1h': '1hour', '2h': '2hour', '4h': '4hour',
+        '6h': '6hour', '12h': '12hour', '1d': '1day', '1w': '1week'
     }
-    granularity = tf_map.get(timeframe.lower(), '60')  # پیش‌فرض: 1h
+    interval = tf_map.get(timeframe.lower(), '1hour')
 
-    url = "https://api.kucoin.com/api/v1/market/candles"
+    url = "https://api.coinex.com/v1/market/kline"
     all_data = []
-    limit = 1500  # KuCoin حداکثر 1500 کندل می‌دهد
-    fetch_until = until_ms // 1000  # به ثانیه تبدیل
+    limit = 1000
+    fetch_since = since_ms // 1000  # CoinEx زمان را به ثانیه می‌خواهد
 
-    while since_ms < fetch_until * 1000:
+    while fetch_since < until_ms // 1000:
         params = {
-            'symbol': market,
-            'granularity': granularity,
-            'from': since_ms // 1000,  # به ثانیه تبدیل
-            'to': fetch_until  # به ثانیه
+            'market': market,
+            'type': interval,
+            'limit': limit,
+            'time_start': fetch_since
         }
 
         try:
@@ -79,30 +79,29 @@ def fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms):
                 break
 
             data = response.json()
-            if not data:
-                print("⚠️ پاسخ خالی است.")
+            if data.get('code') != 0:
+                print(f"❌ خطای CoinEx: {data.get('message')}")
                 break
 
-            # داده در ['data'] است
-            candles = data.get('data', [])
+            klines = data.get('data', [])
             if not data:
                 break
 
-            # فرمت: [time, open, close, high, low, volume, turnover]
-            for item in candles:
+            count = len(klines)
+            for item in klines:
                 all_data.append([
                     int(item[0]) * 1000,  # زمان به میلی‌ثانیه
-                    float(item[1]),
-                    float(item[3]),
-                    float(item[4]),
-                    float(item[2]),
-                    float(item[5])
+                    float(item[1]),       # open
+                    float(item[3]),       # high
+                    float(item[4]),       # low
+                    float(item[2]),       # close
+                    float(item[5])        # volume
                 ])
 
             # به‌روزرسانی برای درخواست بعدی
-            fetch_until = int(candles[-1][0])
+            fetch_since = int(klines[-1][0]) + 1
 
-            if len(candles) < limit:
+            if count < limit:
                 break
 
         except Exception as e:
@@ -136,11 +135,11 @@ def main():
         send_telegram(telegram_token, telegram_chat_id, error_msg)
         return
 
-    # دریافت داده از KuCoin
+    # دریافت داده از CoinEx
     try:
-        data = fetch_kucoin_ohlcv(symbol, timeframe, since_ms, until_ms)
+        data = fetch_coinex_ohlcv(symbol, timeframe, since_ms, until_ms)
         if not data:
-            report = "❌ هیچ داده‌ای از KuCoin دریافت نشد. ممکن است نماد اشتباه باشد."
+            report = "❌ هیچ داده‌ای از CoinEx دریافت نشد. ممکن است نماد اشتباه باشد."
             print(report)
             send_telegram(telegram_token, telegram_chat_id, report)
             return
@@ -155,7 +154,7 @@ def main():
             send_telegram(telegram_token, telegram_chat_id, report)
             return
 
-        print(f"✅ {len(df)} کندل دریافت شد از KuCoin.")
+        print(f"✅ {len(df)} کندل دریافت شد از CoinEx.")
         print(f"📊 اولین قیمت: {df['close'].iloc[0]:.2f}")
         print(f"📊 آخرین قیمت: {df['close'].iloc[-1]:.2f}")
 
@@ -259,7 +258,7 @@ def main():
         win_rate = (tp_count / total) * 100 if total > 0 else 0
 
         report = f"""
-📊 *گزارش بک‌تست معاملاتی (داده KuCoin)*
+📊 *گزارش بک‌تست معاملاتی (داده CoinEx)*
 ────────────────────────────
 📌 *نماد:* `{symbol}`
 🕒 *تایم‌فریم:* `{timeframe}`
