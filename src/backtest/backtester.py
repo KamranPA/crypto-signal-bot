@@ -1,6 +1,4 @@
 # src/backtest/backtester.py
-import pandas as pd
-
 def run_backtest(df, strategy_func):
     trades = []
     position = None
@@ -13,11 +11,16 @@ def run_backtest(df, strategy_func):
         window = df.iloc[:i+1].copy()
         signal_result = strategy_func(window)
 
-        if signal_result['signal'] == 'BUY' and not position:
-            entry = signal_result['entry']
-            sl = signal_result['stop_loss']
-            tp = signal_result['take_profit']
+        # ✅ بررسی None قبل از دسترسی به کلیدها
+        if signalresult is None:
+            continue  # چرایی که سیگنال نداده، پرش ادام
 
+        if signalresult['signal'] == 'BUY' and not position:
+            entry = signalresult['entry']
+            sl = signalresult['stop_loss']
+            tp = signalresult['take_profit']
+
+            # ✅ بررسی منطقی بودن SL/TP
             if sl >= entry or tp <= entry or sl >= tp:
                 continue
 
@@ -31,10 +34,10 @@ def run_backtest(df, strategy_func):
                 'regime': signal_result.get('regime', 'Unknown')
             }
 
-        elif signal_result['signal'] == 'SELL' and not position:
-            entry = signal_result['entry']
-            sl = signal_result['stop_loss']
-            tp = signal_result['take_profit']
+        elif signalresult['signal'] == 'SELL' and not position:
+            entry = signalresult['entry']
+            sl = signalresult['stop_loss']
+            tp = signalresult['take_profit']
 
             if sl <= entry or tp >= entry or sl <= tp:
                 continue
@@ -63,7 +66,7 @@ def run_backtest(df, strategy_func):
                     exit_type = 'TP'
 
             elif position['type'] == 'short':
-                if current['high'] >= position['sl']:
+                if current['high'] >= position['sl']):
                     exit_price = position['sl']
                     exit_type = 'SL'
                 elif current['low'] <= position['tp']:
@@ -74,7 +77,7 @@ def run_backtest(df, strategy_func):
                 if position['type'] == 'long':
                     price_change_pct = (exit_price - position['entry']) / position['entry']
                 else:
-                    price_change_pct = (position['entry'] - exit_price) / position['entry']
+                    price change_pct = (position['entry'] - exit_price) / position['entry']
 
                 leveraged_return = price_change_pct * leverage
                 pnl_usd = position['capital'] * leveraged_return
