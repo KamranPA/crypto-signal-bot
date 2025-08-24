@@ -8,7 +8,7 @@ def send_telegram_report(report):
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if not token or not chat_id:
-        print("⚠️ هشدار: TELEGRAM_BOT_TOKEN یا CHAT_ID تنظیم نشده است.")
+        print("⚠️ TELEGRAM_BOT_TOKEN یا CHAT_ID تنظیم نشده است.")
         return
 
     symbol = os.getenv("SYMBOL", "BTC/USDT")
@@ -18,7 +18,7 @@ def send_telegram_report(report):
     message = f"""
 🚀 *سیگنال جدید سیستم معاملاتی* 🚀
 
-📅 زمان اجرا: {now}
+📅 زمان: {now}
 📊 نماد: {symbol}
 ⏰ تایم فریم: {timeframe}
 🗓 بازه: {report.get('start_date', 'N/A')} تا {report.get('end_date', 'N/A')}
@@ -33,7 +33,7 @@ def send_telegram_report(report):
 • سودده: {report['winning_trades']} ✅
 • ضررده: {report['losing_trades']} ❌
 • نرخ موفقیت: {report['win_rate']}% 💯
-• حداکثر Drawdown: {report['drawdown']}% 📉
+• Drawdown: {report['drawdown']}% 📉
 """
 
     if report['trades']:
@@ -44,35 +44,23 @@ def send_telegram_report(report):
             tp = trade['tp']
             start = trade['start'].strftime("%Y-%m-%d %H:%M")
             pnl_usd = trade['pnl_usd']
-            pnl_percent = trade['pnl_percent']
             emoji = "🟢" if pnl_usd > 0 else "🔴"
 
             message += f"""
-{i}. {emoji} {trade['type'].upper()} ({trade.get('regime', 'N/A')})
+{i}. {emoji} {trade['type'].upper()} ({trade['regime']})
    📅 {start}
    💵 ورود: {entry:.2f}
    ⚠️ حد ضرر: {sl:.2f}
    🎯 حد سود: {tp:.2f}
-   💹 سود/زیان: ${pnl_usd:,.2f} ({pnl_percent:+.2f}%)
+   💹 سود/زیان: ${pnl_usd:,.2f}
    🔚 خروج: {trade['exit_type']}
 """
     else:
         message += "\n📋 *هیچ معامله‌ای انجام نشد.*"
 
-    # ارسال به تلگرام
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True
-    }
-
+    payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
     try:
-        response = requests.post(url, data=payload, timeout=10)
-        if response.status_code == 200:
-            print("✅ گزارش با موفقیت ارسال شد.")
-        else:
-            print(f"❌ خطای تلگرام: {response.status_code}")
+        requests.post(url, data=payload, timeout=10)
     except Exception as e:
-        print(f"❌ خطا در ارسال: {e}")
+        print(f"❌ ارسال ناموفق: {e}")
