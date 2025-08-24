@@ -10,7 +10,7 @@ def send_telegram_report(report):
     print("🔍 --- دیباگ ارسال تلگرام ---")
     print(f"Token موجود: {'بله' if token else 'خیر'}")
     print(f"Chat ID موجود: {'بله' if chat_id else 'خیر'}")
-    
+
     if not token or not chat_id:
         print("❌ ارسال لغو شد: TOKEN یا CHAT_ID تنظیم نشده")
         return
@@ -22,13 +22,13 @@ def send_telegram_report(report):
         print(f"❌ Chat ID نامعتبر: {chat_id}")
         return
 
-    # ساخت پیام
+    # ساخت پیام بدون ایموجی‌های غیرضروری
     symbol = os.getenv("SYMBOL", "BTC/USDT")
     timeframe = os.getenv("TIMEFRAME", "1h")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     message = f"""
-🚀 *سیگنال جدید سیستم معاملاتی* 🚀
+🚀 *سیگنال جدید سیستم معاملاتی* 
 
 📅 زمان: {now}
 📊 نماد: {symbol}
@@ -43,7 +43,7 @@ def send_telegram_report(report):
 📈 *آمار کلی*:
 • تعداد معاملات: {report['total_trades']}
 • سودده: {report['winning_trades']} ✅
-• ضررده: {report['losing_trades']} ❌
+• ضررده: {report['losing_trades']} ✅
 • نرخ موفقیت: {report['win_rate']}% 💯
 • Drawdown: {report['drawdown']}% 📉
 """
