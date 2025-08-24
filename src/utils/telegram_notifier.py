@@ -43,7 +43,7 @@ def send_telegram_report(report):
 📈 *آمار کلی*:
 • تعداد معاملات: {report['total_trades']}
 • سودده: {report['winning_trades']} ✅
-• ضررده: {report['losing_trades']} ✅
+• ضررده: {report['losing_trades']} ❌
 • نرخ موفقیت: {report['win_rate']}% 💯
 • Drawdown: {report['drawdown']}% 📉
 """
@@ -59,7 +59,7 @@ def send_telegram_report(report):
             emoji = "🟢" if pnl_usd > 0 else "🔴"
 
             message += f"""
-{i}. {emoji} {trade['type'].upper()} ({trade['regime']})
+{i}. { emoji} {trade['type'].upper()} ({trade['regime']})
    📅 {start}
    💵 ورود: {entry:.2f}
    ⚠️ حد ضرر: {sl:.2f}
@@ -90,4 +90,4 @@ def send_telegram_report(report):
         else:
             print("❌ خطا در ارسال پیام.")
     except Exception as e:
-        print(f"🚫 خطا در ارسال: {e}")
+        print(f"🚫 خطا در ارسال: {e}")yg
