@@ -50,7 +50,7 @@ def send_telegram_report(report):
 
     if report['trades']:
         message += "\n📋 *جزئیات معاملات*:\n"
-        for i, trade in enumerate(report['trades'], 1):
+        for i, trade in enumerate(report['trades'],1):
             entry = trade['entry']
             sl = trade['sl']
             tp = trade['tp']
@@ -90,4 +90,5 @@ def send_telegram_report(report):
         else:
             print("❌ خطا در ارسال پیام.")
     except Exception as e:
-        print(f"🚫 خطا در ارسال: {e}")yg
+        # ✅ اصلاح: استفاده از str() برای ایموجی‌ها
+        print("❌ خطا در ارسال: " + str(e))
