@@ -2,31 +2,24 @@
 import pandas as pd
 
 def run_backtest(df, strategy_func):
-    """
-    اجرای بک‌تست با شبیه‌سازی معاملات با لوریج 10x و سرمایه 1000 دلار
-    فقط معاملات با SL/TP منطقی ذخیره می‌شوند
-    """
     trades = []
     position = None
-    initial_capital = 1000.0  # دلار
+    initial_capital = 1000.0
     leverage = 10
 
-    # محاسبه EMA برای استراتژی
     df['ema_21'] = df['close'].rolling(21).mean()
 
     for i in range(50, len(df)):
-        window = df.iloc[:i+1]
+        window = df.iloc[:i+1].copy()  # ✅ استفاده از .copy()
         signal_result = strategy_func(window)
 
-        # ورود به معامله
         if signal_result['signal'] == 'BUY' and not position:
             entry = signal_result['entry']
             sl = signal_result['stop_loss']
             tp = signal_result['take_profit']
 
-            # ✅ بررسی منطقی بودن SL و TP برای BUY
             if sl >= entry or tp <= entry or sl >= tp:
-                print(f"⚠️ سیگنال BUY با SL/TP غیرمنطقی نادیده گرفته شد: entry={entry:.2f}, SL={sl:.2f}, TP={tp:.2f}")
+                print(f"⚠️ BUY با SL/TP غیرمنطقی نادیده گرفته شد: E={entry:.2f}, SL={sl:.2f}, TP={tp:.2f}")
                 continue
 
             position = {
@@ -44,9 +37,8 @@ def run_backtest(df, strategy_func):
             sl = signal_result['stop_loss']
             tp = signal_result['take_profit']
 
-            # ✅ بررسی منطقی بودن SL و TP برای SELL
             if sl <= entry or tp >= entry or sl <= tp:
-                print(f"⚠️ سیگنال SELL با SL/TP غیرمنطقی نادیده گرفته شد: entry={entry:.2f}, SL={sl:.2f}, TP={tp:.2f}")
+                print(f"⚠️ SELL با SL/TP غیرمنطقی نادیده گرفته شد: E={entry:.2f}, SL={sl:.2f}, TP={tp:.2f}")
                 continue
 
             position = {
@@ -59,7 +51,6 @@ def run_backtest(df, strategy_func):
                 'regime': signal_result.get('regime', 'Unknown')
             }
 
-        # خروج از معامله
         if position:
             current = df.iloc[i]
             exit_price = None
@@ -82,7 +73,6 @@ def run_backtest(df, strategy_func):
                     exit_type = 'TP'
 
             if exit_price is not None:
-                # محاسبه بازدهی با لوریج
                 if position['type'] == 'long':
                     price_change_pct = (exit_price - position['entry']) / position['entry']
                 else:
@@ -92,7 +82,6 @@ def run_backtest(df, strategy_func):
                 pnl_usd = position['capital'] * leveraged_return
                 final_capital = position['capital'] + pnl_usd
 
-                # ✅ فقط اگر SL/TP معتبر بود، ذخیره کن
                 trades.append({
                     'type': position['type'],
                     'entry': position['entry'],
@@ -109,13 +98,11 @@ def run_backtest(df, strategy_func):
                 })
                 position = None
 
-    # محاسبه آمار کلی
     total_trades = len(trades)
     winning_trades = len([t for t in trades if t['pnl_usd'] > 0])
     losing_trades = total_trades - winning_trades
     win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
 
-    # Drawdown بر اساس منحنی سرمایه
     capital_curve = [initial_capital] + [t['capital_after'] for t in trades]
     peak = pd.Series(capital_curve).cummax()
     drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
