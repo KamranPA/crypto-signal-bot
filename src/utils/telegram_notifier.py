@@ -3,31 +3,42 @@ import requests
 import os
 from datetime import datetime
 
-def send_telegram_message(token, chat_id, text):
-    """ارسال یک پیام کوتاه به تلگرام"""
+def send_telegram_message(token, chat_id, text, parse_mode=None):
+    """
+    ارسال پیام به تلگرام با قابلیت غیرفعال کردن parse_mode
+    """
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
         "text": text,
-        "parse_mode": "Markdown",
         "disable_web_page_preview": True
     }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+
     try:
         response = requests.post(url, data=payload, timeout=15)
-        return response.status_code == 200
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"❌ خطا در ارسال پیام: {response.status_code} - {response.text}")
+            return False
     except Exception as e:
-        print(f"❌ خطای شبکه: {e}")
+        print(f"🚫 خطا در ارسال: {e}")
         return False
 
-def split_message(message, max_length=4000):
-    """تقسیم پیام به بخش‌های کوتاه‌تر"""
+def split_message(message, max_length=3500):
+    """
+    تقسیم پیام در آخرین خط جدید قبل از محدودیت
+    """
     parts = []
     while len(message) > max_length:
+        # پیدا کردن آخرین خط جدید قبل از محدودیت
         split_index = message.rfind('\n', 0, max_length)
-        if split_index == -1:
+        if split_index == -1:  # اگر خط جدید نبود
             split_index = max_length
         parts.append(message[:split_index])
-        message = message[split_index:]
+        message = message[split_index:].lstrip()  # حذف فاصله اول
     parts.append(message)
     return parts
 
@@ -40,18 +51,18 @@ def send_telegram_report(report):
         return
 
     try:
-        chat_id_int = int(chat_id)
+        int(chat_id)
     except:
         print(f"❌ Chat ID نامعتبر: {chat_id}")
         return
 
-    # ساخت پیام اصلی (بدون جزئیات معاملات)
     symbol = os.getenv("SYMBOL", "BTC/USDT")
     timeframe = os.getenv("TIMEFRAME", "1h")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    # 🔹 1. ارسال خلاصه با Markdown (فرمت خوب)
     summary = f"""
-🚀 *سیگنال جدید سیستم معاملاتی* 
+🚀 *سیگنال جدید سیستم معاملاتی*
 
 📅 زمان: {now}
 📊 نماد: {symbol}
@@ -61,51 +72,49 @@ def send_telegram_report(report):
 🏦 *مدیریت سرمایه (1000$ + لوریج 10x)*
 • سرمایه اولیه: $1000
 • سرمایه نهایی: ${report['final_capital']:,.2f}
-• سود/زیان کل: ${report['total_pnl_usd']:,.2f} {'🟢' if report['total_pnl_usd'] > 0 else '🔴'}
+• سود/زیان کل: ${report['total_pnl_usd']:,.2f} {'(سود)' if report['total_pnl_usd'] > 0 else '(ضرر)'}
 
 📈 *آمار کلی*:
 • تعداد معاملات: {report['total_trades']}
-• سودده: {report['winning_trades']} ✅
-• ضررده: {report['losing_trades']} ❌
-• نرخ موفقیت: {report['win_rate']}% 💯
-• Drawdown: {report['drawdown']}% 📉
+• سودده: {report['winning_trades']}
+• ضررده: {report['losing_trades']}
+• نرخ موفقیت: {report['win_rate']}%
+• Drawdown: {report['drawdown']}%
 """
 
-    # ارسال خلاصه
-    if not send_telegram_message(token, chat_id, summary):
+    if not send_telegram_message(token, chat_id, summary.strip(), parse_mode="Markdown"):
         print("❌ ارسال خلاصه ناموفق بود.")
         return
 
-    # ارسال جزئیات معاملات به صورت تکی یا گروهی
+    # 🔹 2. ارسال جزئیات معاملات بدون Markdown (فقط متن ساده)
     if report['trades']:
-        details = "\n📋 *جزئیات معاملات*:\n"
+        details = "📋 جزئیات معاملات:\n"
         for i, trade in enumerate(report['trades'], 1):
             entry = trade['entry']
             sl = trade['sl']
             tp = trade['tp']
             start = trade['start'].strftime("%Y-%m-%d %H:%M")
             pnl_usd = trade['pnl_usd']
-            emoji = "🟢" if pnl_usd > 0 else "🔴"
+            result = "سود" if pnl_usd > 0 else "ضرر"
 
-            trade_msg = f"""
-{i}. {emoji} {trade['type'].upper()} ({trade['regime']})
-   📅 {start}
-   💵 ورود: {entry:.2f}
-   ⚠️ حد ضرر: {sl:.2f}
-   🎯 حد سود: {tp:.2f}
-   💹 سود/زیان: ${pnl_usd:,.2f}
-   🔚 خروج: {trade['exit_type']}
+            details += f"""
+{i}. {trade['type'].upper()} | {trade['regime']}
+   تاریخ: {start}
+   ورود: {entry:.2f}
+   حد ضرر: {sl:.2f}
+   حد سود: {tp:.2f}
+   خروج: {trade['exit_type']} 
+   سود/زیان: ${pnl_usd:,.2f} ({result})
+---
 """
-            details += trade_msg
-
-        # تقسیم جزئیات به بخش‌های کوتاه‌تر
-        detail_parts = split_message(details, 3500)  # حاشیه امنیت
+        # تقسیم جزئیات به بخش‌های کوچک
+        detail_parts = split_message(details, 3500)
         for part in detail_parts:
-            if not send_telegram_message(token, chat_id, part):
+            if not send_telegram_message(token, chat_id, part.strip()):
                 print("⚠️ یک بخش جزئیات ارسال نشد.")
             else:
-                print("📤 بخشی از جزئیات ارسال شد.")
+                print("📤 بخشی از جزئیات معاملات ارسال شد.")
     else:
         send_telegram_message(token, chat_id, "📋 هیچ معامله‌ای انجام نشد.")
 
-    print("✅ گزارش با موفقیت ارسال شد.")
+    print("✅ گزارش کامل با موفقیت ارسال شد.")
