@@ -64,10 +64,10 @@ def run_backtest(df, strategy_func):
                     exit_type = 'TP'
 
             elif position['type'] == 'short':
-                if current['high'] >= position['sl']):
+                if current['high'] >= position['sl']:
                     exit_price = position['sl']
                     exit_type = 'SL'
-                elif current['low'] <= position['tp']):
+                elif current['low'] <= position['tp']:
                     exit_price = position['tp']
                     exit_type = 'TP'
 
