@@ -108,4 +108,4 @@ def send_telegram_report(report):
     else:
         send_telegram_message(token, chat_id, "📋 هیچ معامله‌ای انجام نشد.")
 
-    print("✅ گزارش با موفقیت ارسال شد.")ع
+    print("✅ گزارش با موفقیت ارسال شد.")
