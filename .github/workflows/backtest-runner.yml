@@ -1,34 +1,50 @@
-# run_backtest.py
-import os
-from datetime import datetime
-from src.data.data_fetcher import fetch_ohlcv
-from src.strategy.trading_system import generate_signal
-from src.backtest.backtester import run_backtest
-from src.utils.telegram_notifier import send_telegram_report
+name: 🚀 Run Backtest
 
-def date_to_milliseconds(date_str):
-    dt = datetime.strptime(date_str, "%Y-%m-%d")
-    return int(dt.timestamp() * 1000)
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'نماد (مثلاً BTC/USDT)'
+        required: true
+        default: 'BTC/USDT'
+      timeframe:
+        description: 'تایم فریم (15m, 30m, 1h)'
+        required: true
+        default: '1h'
+      start_date:
+        description: 'تاریخ شروع (YYYY-MM-DD)'
+        required: true
+        default: '2024-05-01'
+      end_date:
+        description: 'تاریخ پایان (YYYY-MM-DD)'
+        required: true
+        default: '2024-06-01'
 
-if __name__ == "__main__":
-    symbol = os.getenv("SYMBOL", "BTC/USDT")
-    timeframe = os.getenv("TIMEFRAME", "1h")
-    start_date = os.getenv("START_DATE", "2024-05-01")
-    end_date = os.getenv("END_DATE", "2024-06-01")
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
 
-    print(f"📅 بازه: {start_date} تا {end_date} | نماد: {symbol} | تایم فریم: {timeframe}")
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    since = date_to_milliseconds(start_date)
-    df = fetch_ohlcv(symbol, timeframe, since, limit=1000)
-    df = df[df.index <= datetime.strptime(end_date, "%Y-%m-%d")]
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
 
-    if df.empty:
-        print("❌ داده‌ای دریافت نشد.")
-        exit(1)
+      - name: Run backtest
+        env:
+          SYMBOL: ${{ inputs.symbol }}
+          TIMEFRAME: ${{ inputs.timeframe }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python run_backtest.py
 
-    report = run_backtest(df, generate_signal)
-    report['start_date'] = start_date
-    report['end_date'] = end_date
-
-    send_telegram_report(report)
-    print("✅ اجرا با موفقیت کامل شد.")
+      - name: Success
+        run: echo "✅ بک‌تست با موفقیت اجرا شد."
