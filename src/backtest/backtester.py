@@ -10,7 +10,7 @@ def run_backtest(df, strategy_func):
     df['ema_21'] = df['close'].rolling(21).mean()
 
     for i in range(50, len(df)):
-        window = df.iloc[:i+1].copy()  # ✅ استفاده از .copy()
+        window = df.iloc[:i+1].copy()
         signal_result = strategy_func(window)
 
         if signal_result['signal'] == 'BUY' and not position:
@@ -19,7 +19,6 @@ def run_backtest(df, strategy_func):
             tp = signal_result['take_profit']
 
             if sl >= entry or tp <= entry or sl >= tp:
-                print(f"⚠️ BUY با SL/TP غیرمنطقی نادیده گرفته شد: E={entry:.2f}, SL={sl:.2f}, TP={tp:.2f}")
                 continue
 
             position = {
@@ -38,7 +37,6 @@ def run_backtest(df, strategy_func):
             tp = signal_result['take_profit']
 
             if sl <= entry or tp >= entry or sl <= tp:
-                print(f"⚠️ SELL با SL/TP غیرمنطقی نادیده گرفته شد: E={entry:.2f}, SL={sl:.2f}, TP={tp:.2f}")
                 continue
 
             position = {
