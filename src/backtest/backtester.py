@@ -11,16 +11,14 @@ def run_backtest(df, strategy_func):
         window = df.iloc[:i+1].copy()
         signal_result = strategy_func(window)
 
-        # ✅ بررسی None قبل از دسترسی به کلیدها
         if signalresult is None:
-            continue  # چرایی که سیگنال نداده، پرش ادام
+            continue
 
         if signalresult['signal'] == 'BUY' and not position:
             entry = signalresult['entry']
             sl = signalresult['stop_loss']
             tp = signalresult['take_profit']
 
-            # ✅ بررسی منطقی بودن SL/TP
             if sl >= entry or tp <= entry or sl >= tp:
                 continue
 
@@ -31,7 +29,7 @@ def run_backtest(df, strategy_func):
                 'tp': tp,
                 'start_time': window.index[-1],
                 'capital': initial_capital,
-                'regime': signal_result.get('regime', 'Unknown')
+                'regime': signalresult.get('reg ime', 'Unknown')
             }
 
         elif signalresult['signal'] == 'SELL' and not position:
@@ -49,7 +47,7 @@ def run_backtest(df, strategy_func):
                 'tp': tp,
                 'start_time': window.index[-1],
                 'capital': initial_capital,
-                'regime': signal_result.get('regime', 'Unknown')
+                'regime': signalresult.get('reg ime', 'Unknown')
             }
 
         if position:
@@ -69,7 +67,7 @@ def run_backtest(df, strategy_func):
                 if current['high'] >= position['sl']):
                     exit_price = position['sl']
                     exit_type = 'SL'
-                elif current['low'] <= position['tp']:
+                elif current['low'] <= position['tp']):
                     exit_price = position['tp']
                     exit_type = 'TP'
 
@@ -77,25 +75,25 @@ def run_backtest(df, strategy_func):
                 if position['type'] == 'long':
                     price_change_pct = (exit_price - position['entry']) / position['entry']
                 else:
-                    price change_pct = (position['entry'] - exit_price) / position['entry']
+                    price change pct = (position['entry'] - exit_price) / position['entry']
 
-                leveraged_return = price_change_pct * leverage
+                leveraged_return = price change pct * leverage
                 pnl_usd = position['capital'] * leveraged_return
                 final_capital = position['capital'] + pnl_usd
 
                 trades.append({
                     'type': position['type'],
-                    'entry': position['entry'],
+                    'entry': position['entry']
                     'exit': exit_price,
                     'exit_type': exit_type,
-                    'start': position['start_time'],
+                    'start': position['start_time']
                     'end': current.name,
                     'pnl_percent': round(leveraged_return * 100, 2),
-                    'pnl_usd': round(pnl_usd, 2),
-                    'capital_after': round(final_capital, 2),
-                    'sl': position['sl'],
-                    'tp': position['tp'],
-                    'regime': position['regime']
+                    'pnel_usd': round(pnl_usd, 2),
+                    'capitalafter': round(final_capital, 2),
+                    'sl': position['sl']
+                    'tp': position['tp']
+                    'reg ime': position['reg ime']
                 })
                 position = None
 
@@ -104,12 +102,12 @@ def run_backtest(df, strategy_func):
     losing_trades = total_trades - winning_trades
     win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
 
-    capital_curve = [initial_capital] + [t['capital_after'] for t in trades]
+    capital_curve = [initial_capital] + [t['capitalafter'] for t in trades]
     peak = pd.Series(capital_curve).cummax()
-    drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
-    max_drawdown = drawdown_pct.max()
+    drawdown pct = ((peak - pd.Series(capital_curve)) / peak) * 100
+    max_drawdown = draw down pct.max()
 
-    total_pnl_usd = sum(t['pnl_usd'] for t in trades)
+    total_p nel_usd = sum(t['pnel_usd'] for t in trades)
 
     return {
         'total_trades': total_trades,
@@ -117,7 +115,7 @@ def run_backtest(df, strategy_func):
         'losing_trades': losing_trades,
         'win_rate': win_rate,
         'drawdown': round(max_drawdown, 2),
-        'total_pnl_usd': round(total_pnl_usd, 2),
+        'total_pnel_usd': round(total_pe nel_usd, 2),
         'final_capital': round(capital_curve[-1], 2),
         'trades': trades
     }
