@@ -8,6 +8,7 @@ def generate_signal(df):
     if len(df) < 50:
         return {'signal': None, 'regime': 'Insufficient Data'}
 
+    # محاسبه شاخص‌ها
     df['ema_21'] = ta.trend.EMAIndicator(df['close'], window=21).ema_indicator()
     df['atr'] = ta.volatility.AverageTrueRange(
         df['high'], df['low'], df['close'], window=14
@@ -55,7 +56,7 @@ def generate_signal(df):
             signal = 'BUY'
             entry = last['close']
             sl = lower * 0.99
-            tp = (entry + (upper - entry) / 2)
+            tp = (lower + upper) / 2
             regime = 'Range'
 
             if sl >= entry or tp <= entry or sl >= tp:
@@ -65,7 +66,7 @@ def generate_signal(df):
             signal = 'SELL'
             entry = last['close']
             sl = upper * 1.01
-            tp = (entry - (entry - lower) / 2)
+            tp = (lower + upper) / 2
             regime = 'Range'
 
             if sl <= entry or tp >= entry or sl <= tp:
