@@ -1,44 +1,62 @@
 # src/strategy/trading_system.py
-from src.reg ime_detection.range_detector import is_range_regime
-from src.reg ime_detection.trend_detector import is_trend_reg ime
-from src.reg ime_detection.breakout_detector import is_breakout_reg ime
+"""
+سیستم تولید سیگنال بر اساس تشخیص رژیم بازار: روند، رنج، شکست
+"""
+from src.regime_detection.range_detector import is_range_regime
+from src.regime_detection.trend_detector import is_trend_regime
+from src.regime_detection.breakout_detector import is_breakout_regime
 import ta
 
+
 def generate_signal(df):
+    """
+    تولید سیگنال بر اساس رژیم بازار
+    """
     if len(df) < 50:
         return None
 
-    # محاسبه شاخص‌ها
+    # محاسبه EMA 21
     df['ema_21'] = ta.trend.EMAIndicator(df['close'], window=21).ema_indicator()
+
+    # محاسبه ATR
     df['atr'] = ta.volatility.AverageTrueRange(
-        df['high'], df['low'], df['close'], window=14
+        high=df['high'],
+        low=df['low'],
+        close=df['close'],
+        window=14
     ).average_true_range()
 
     # محاسبه ADX
     adx_indicator = ta.trend.ADXIndicator(
         high=df['high'],
-        low=df['low']
-        close=df['close']
+        low=df['low'],
+        close=df['close'],
         window=14
     )
     df.loc[:, 'adx'] = adx_indicator.adx()
     adx_value = df['adx'].iloc[-1]
 
+    # آخرین و کندل قبلی
     last = df.iloc[-1]
     prev = df.iloc[-2]
+
+    # فیلتر حجم
     volume_avg = df['volume'].rolling(20).mean().iloc[-1]
     volume_ratio = last['volume'] / volume_avg
 
+    # تشخیص رژیم
     in_trend = is_trend_regime(df)
-    in_range = is_range_reg ime(df)
-    in_breakout = is_breakout_reg ime(df)
+    in_range = is_range_regime(df)
+    in_breakout = is_breakout_regime(df)
 
+    # متغیرهای سیگنال
     signal = entry = sl = tp = None
     regime = 'Uncertain'
 
-    # 🔹 روند قوی (ADX > 25 و حجم بالا)
-    if in_intrend and adx_value > 25:
-        if volume_ratio > 1.2:
+    # 1. روند قوی (فقط اگر ADX > 25 و حجم بالا باشد)
+    if in_trend and adx_value > 25:
+        if volume_ratio > 1.2:  # فقط با حجم بالا
+            # سیگنال خرید
             if last['close'] > last['ema_21'] and prev['close'] <= prev['ema_21']:
                 signal = 'BUY'
                 entry = last['close']
@@ -46,35 +64,38 @@ def generate_signal(df):
                 tp = entry + 2.5 * df['atr'].iloc[-1]
                 regime = 'Strong Trend_Up'
 
-            elif last['close'] < last['ema_21'] and prev['close'] >= prev['ema_21']):
+            # سیگنال فروش
+            elif last['close'] < last['ema_21'] and prev['close'] >= prev['ema_21']:
                 signal = 'SELL'
                 entry = last['close']
                 sl = max(prev['high'], entry + 1.5 * df['atr'].iloc[-1])
                 tp = entry - 2.5 * df['atr'].iloc[-1]
                 regime = 'Strong Trend_Down'
 
-    #   رنج (ADX < 20)
+    # 2. رنج (فقط اگر ADX < 20 باشد)
     elif in_range and adx_value < 20:
         regime = 'Range'
-        lower = df['low'].rolling(20).min().iloc[-1]
-        upper = df['high'].rolling(20).max().iloc[-1]
+        lower_band = df['low'].rolling(20).min().iloc[-1]
+        upper_band = df['high'].rolling(20).max().iloc[-1]
 
-        if abs(last['close'] - lower) / lower < 0.005:
+        # سیگنال خرید در پایین کانال
+        if abs(last['close'] - lower_band) / lower_band < 0.005:
             signal = 'BUY'
             entry = last['close']
-            sl = lower * 0.99
-            tp = (lower + upper) / 2
+            sl = lower_band * 0.99
+            tp = (lower_band + upper_band) / 2
 
-        elif abs(last['close'] - upper) / upper < 0.005:
+        # سیگنال فروش در بالای کانال
+        elif abs(last['close'] - upper_band) / upper_band < 0.005:
             signal = 'SELL'
             entry = last['close']
-            sl = upper * 1.01
-            tp = (lower + upper) / 2
+            sl = upper_band * 1.01
+            tp = (lower_band + upper_band) / 2
 
-    #   شکست (افزایش ADX و حجم بالا)
+    # 3. شکست (با تأیید حجم و افزایش ADX)
     elif in_breakout:
         adx_slope = adx_value - df['adx'].iloc[-2]
-        if adx_slope > 0 and volume_ratio > 1.3:
+        if adx_slope > 0 and volume_ratio > 1.3:  # تأیید با حجم و روند جدید
             recent_high = df['high'].rolling(20).max().iloc[-2]
             recent_low = df['low'].rolling(20).min().iloc[-2]
 
@@ -92,23 +113,28 @@ def generate_signal(df):
                 tp = entry - 3.0 * df['atr'].iloc[-1]
                 regime = 'Breakout Confirmed'
 
-    # ✅ بررسی SL/TP
+    # بررسی نهایی منطقی بودن SL و TP
     if signal == 'BUY':
-        if entry is None or sl is None or tp is None or sl >= entry or tp <= entry:
+        if entry is None or sl is None or tp is None:
             return None
-    elif signal == 'SELL':
-        if entry is None or sl is None or tp is None or sl <= entry or tp >= entry:
+        if sl >= entry or tp <= entry or sl >= tp:
             return None
 
-    # ✅ فقط اگر سیگنال داشته، برگردانیم
+    elif signal == 'SELL':
+        if entry is None or sl is None or tp is None:
+            return None
+        if sl <= entry or tp >= entry or sl <= tp:
+            return None
+
+    # فقط اگر سیگنال داشته باشیم، برگردانیم
     if signal:
         return {
             'signal': signal,
             'entry': entry,
             'stop_loss': sl,
             'take_profit': tp,
-            'reg ime': regime
+            'regime': regime
         }
 
-    # ✅ فقط اگر هیچ سیگنالی نبود، None برگردانیم
+    # اگر هیچ سیگنالی نبود
     return None
