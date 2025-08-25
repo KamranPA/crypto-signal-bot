@@ -28,7 +28,11 @@ def generate_signal(df):
     last = df.iloc[-1]
     prev = df.iloc[-2]
     volume_avg = df['volume'].rolling(20).mean().iloc[-1]
-    volume_ratio = last['volume'] / volume_avg
+
+    # 🔹 حجم برای روند (متوسط)
+    volume_ratio_trend = last['volume'] / volume_avg
+    # 🔹 حجم برای شکست (بالا)
+    volume_ratio_breakout = last['volume'] / volume_avg
 
     in_trend = is_trend_regime(df)
     in_range = is_range_regime(df)
@@ -37,9 +41,9 @@ def generate_signal(df):
     signal = entry = sl = tp = None
     regime = 'Uncertain'
 
-    # 1. روند قوی
+    # 1. روند قوی (فقط با حجم متوسط)
     if in_trend and adx_value > 25:
-        if volume_ratio > 1.2:
+        if volume_ratio_trend > 1.2:
             if last['close'] > last['ema_21'] and prev['close'] <= prev['ema_21']:
                 signal = 'BUY'
                 entry = last['close']
@@ -69,14 +73,14 @@ def generate_signal(df):
             sl = upper_band * 1.01
             tp = (lower_band + upper_band) / 2
 
-    # 3. شکست (با فیلترهای منطقی)
+    # 3. شکست (فقط با حجم بالا)
     elif in_breakout:
         adx_slope = adx_value - df['adx'].iloc[-2]
         body_size = abs(last['close'] - last['open'])
         min_body = df['atr'].iloc[-1] * 0.6
 
         if (adx_slope > 0 and 
-            volume_ratio > 1.5 and 
+            volume_ratio_breakout > 1.8 and 
             body_size > min_body):
 
             recent_high = df['high'].rolling(20).max().iloc[-2]
