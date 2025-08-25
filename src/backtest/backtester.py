@@ -3,22 +3,22 @@ import pandas as pd
 
 def run_backtest(df, strategy_func):
     """
-    اجرای بک‌تست بر روی داده‌های تاریخی
+    اجرای بک‌تست با مدیریت سرمایه تجمعی (نه ثابت)
     """
     trades = []
     position = None
-    initial_capital = 1000.0  # دلار
-    leverage = 10
+    initial_capital = 1000.0  # سرمایه اولیه
+    current_capital = initial_capital  # ✅ سرمایه جاری که به‌روز می‌شود
+    leverage = 10  # لوریج
 
     # محاسبه EMA برای استراتژی
     df['ema_21'] = df['close'].rolling(21).mean()
 
-    # شروع از کندل 50 به بعد برای اطمینان از کافی بودن داده
     for i in range(50, len(df)):
         window = df.iloc[:i+1].copy()
         signal_result = strategy_func(window)
 
-        # ✅ بررسی اینکه سیگنال وجود دارد
+        # بررسی سیگنال
         if signal_result is None:
             continue
 
@@ -30,11 +30,13 @@ def run_backtest(df, strategy_func):
 
         # ورود به معامله خرید
         if signal == 'BUY' and not position:
-            # ✅ بررسی منطقی بودن SL و TP
             if entry is None or sl is None or tp is None:
                 continue
             if sl >= entry or tp <= entry or sl >= tp:
                 continue
+
+            # ✅ حجم معامله بر اساس سرمایه فعلی (می‌تونی درصد بذاری)
+            position_size = current_capital  # یا current_capital * 0.95 برای احتیاط
 
             position = {
                 'type': 'long',
@@ -42,7 +44,7 @@ def run_backtest(df, strategy_func):
                 'sl': sl,
                 'tp': tp,
                 'start_time': window.index[-1],
-                'capital': initial_capital,
+                'position_size': position_size,  # مقدار سرمایه قابل استفاده
                 'regime': regime
             }
 
@@ -53,13 +55,15 @@ def run_backtest(df, strategy_func):
             if sl <= entry or tp >= entry or sl <= tp:
                 continue
 
+            position_size = current_capital
+
             position = {
                 'type': 'short',
                 'entry': entry,
                 'sl': sl,
                 'tp': tp,
                 'start_time': window.index[-1],
-                'capital': initial_capital,
+                'position_size': position_size,
                 'regime': regime
             }
 
@@ -94,8 +98,8 @@ def run_backtest(df, strategy_func):
                     price_change_pct = (position['entry'] - exit_price) / position['entry']
 
                 leveraged_return = price_change_pct * leverage
-                pnl_usd = position['capital'] * leveraged_return
-                final_capital = position['capital'] + pnl_usd
+                pnl_usd = position['position_size'] * leveraged_return
+                current_capital += pnl_usd  # ✅ به‌روزرسانی سرمایه
 
                 # ذخیره معامله
                 trades.append({
@@ -107,7 +111,7 @@ def run_backtest(df, strategy_func):
                     'end': current.name,
                     'pnl_percent': round(leveraged_return * 100, 2),
                     'pnl_usd': round(pnl_usd, 2),
-                    'capital_after': round(final_capital, 2),
+                    'capital_after': round(current_capital, 2),  # ✅ سرمایه بعد از معامله
                     'sl': position['sl'],
                     'tp': position['tp'],
                     'regime': position['regime']
@@ -126,7 +130,7 @@ def run_backtest(df, strategy_func):
     drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
     max_drawdown = drawdown_pct.max()
 
-    # محاسبه سود/زیان کل
+    # سود/زیان کل
     total_pnl_usd = sum(t['pnl_usd'] for t in trades)
 
     return {
@@ -136,6 +140,6 @@ def run_backtest(df, strategy_func):
         'win_rate': win_rate,
         'drawdown': round(max_drawdown, 2),
         'total_pnl_usd': round(total_pnl_usd, 2),
-        'final_capital': round(capital_curve[-1], 2),
+        'final_capital': round(current_capital, 2),  # ✅ سرمایه نهایی صحیح
         'trades': trades
-    } 
+    }
