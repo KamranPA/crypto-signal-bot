@@ -81,4 +81,4 @@ def apply_range_strategy(df, adx_threshold=20, risk_reward_ratio=1.5):
             'regime': 'Range'
         }
 
-    return Noneع
+    return None
