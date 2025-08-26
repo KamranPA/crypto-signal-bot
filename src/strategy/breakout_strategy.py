@@ -8,14 +8,6 @@ def apply_breakout_strategy(df, volume_ratio_threshold=1.8, min_body_ratio=0.6):
     if len(df) < 50:
         return None
 
-    # محاسبه ATR
-    atr = ta.volatility.AverageTrueRange(
-        high=df['high'],
-        low=df['low'],
-        close=df['close'],
-        window=14
-    ).average_true_range()
-
     # محاسبه ADX
     adx_indicator = ta.trend.ADXIndicator(
         high=df['high'],
@@ -26,6 +18,14 @@ def apply_breakout_strategy(df, volume_ratio_threshold=1.8, min_body_ratio=0.6):
     adx = adx_indicator.adx()
     adx_slope = adx.iloc[-1] - adx.iloc[-2]
 
+    # محاسبه ATR
+    atr = ta.volatility.AverageTrueRange(
+        high=df['high'],
+        low=df['low'],
+        close=df['close'],
+        window=14
+    ).average_true_range()
+
     last = df.iloc[-1]
     prev = df.iloc[-2]
     volume_avg = df['volume'].rolling(20).mean().iloc[-1]
@@ -35,25 +35,41 @@ def apply_breakout_strategy(df, volume_ratio_threshold=1.8, min_body_ratio=0.6):
     recent_high = df['high'].rolling(20).max().iloc[-2]
     recent_low = df['low'].rolling(20).min().iloc[-2]
 
-    # شرط: شکست با حجم بالا و بدنه قوی
+    # 🔹 فقط اگر شکست با حجم بالا و بدنه قوی
     if (adx_slope > 0 and 
         volume_ratio > volume_ratio_threshold and 
         body_size > min_body_ratio * atr.iloc[-1]):
 
         if last['high'] > recent_high and last['close'] > recent_high:
+            entry = last['close']
+            sl = recent_high * 0.99
+            tp = entry + 2.5 * atr.iloc[-1]
+
+            if sl >= entry or tp <= entry or sl >= tp:
+                return None
+
             return {
                 'signal': 'BUY',
-                'entry': last['close'],
-                'stop_loss': recent_high * 0.99,
-                'take_profit': last['close'] + 2.5 * atr.iloc[-1],
+                'entry': entry,
+                'stop_loss': sl,
+                'take_profit': tp,
                 'regime': 'Breakout Confirmed'
             }
+
         elif last['low'] < recent_low and last['close'] < recent_low:
+            entry = last['close']
+            sl = recent_low * 1.01
+            tp = entry - 2.5 * atr.iloc[-1]
+
+            if sl <= entry or tp >= entry or sl <= tp:
+                return None
+
             return {
                 'signal': 'SELL',
-                'entry': last['close'],
-                'stop_loss': recent_low * 1.01,
-                'take_profit': last['close'] - 2.5 * atr.iloc[-1],
+                'entry': entry,
+                'stop_loss': sl,
+                'take_profit': tp,
                 'regime': 'Breakout Confirmed'
             }
+
     return None
