@@ -1,30 +1,14 @@
 # src/strategy/range_strategy.py
-"""
-استراتژی رنج: فقط در بازارهای کانالی با نوسان کم و حجم پایین
-"""
-
 import ta
 
-def apply_range_strategy(df, adx_threshold=20):
+def apply_range_strategy(df, adx_threshold=20, risk_reward_ratio=1.5):
     """
-    تشخیص و اجرای سیگنال در رنج (Range)
-    
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        داده‌های OHLCV
-    adx_threshold : float
-        آستانه ADX برای تشخیص رنج (پیش‌فرض 20)
-
-    Returns:
-    --------
-    dict or None
-        سیگنال شامل signal, entry, sl, tp, regime
+    استراتژی رنج با نسبت ریسک به پاداش منطقی
     """
     if len(df) < 50:
         return None
 
-    # محاسبه ADX برای تشخیص روند
+    # محاسبه ADX
     adx_indicator = ta.trend.ADXIndicator(
         high=df['high'],
         low=df['low'],
@@ -34,11 +18,11 @@ def apply_range_strategy(df, adx_threshold=20):
     adx = adx_indicator.adx()
     adx_value = adx.iloc[-1]
 
-    # 🔹 فقط اگر بازار واقعاً رنج باشد (ADX < 20)
+    # فقط اگر بازار واقعاً رنج باشد
     if adx_value >= adx_threshold:
-        return None  # ❌ روند یا شکست، نه رنج
+        return None
 
-    # محاسبه ATR برای SL/TP
+    # محاسبه ATR
     atr = ta.volatility.AverageTrueRange(
         high=df['high'],
         low=df['low'],
@@ -50,20 +34,22 @@ def apply_range_strategy(df, adx_threshold=20):
     lower_band = df['low'].rolling(20).min().iloc[-1]
     upper_band = df['high'].rolling(20).max().iloc[-1]
 
-    # ✅ بررسی منطقی بودن SL و TP
-    def validate_sl_tp(entry, sl, tp):
-        """بررسی اینکه SL < TP و در محدوده منطقی باشد"""
-        if sl >= entry or tp <= entry or sl >= tp:
-            return False
-        return True
+    # ✅ فاصله ورود به SL بر اساس ATR
+    max_sl_distance = 2.0 * atr.iloc[-1]  # حداکثر فاصله SL از ورود
 
     # سیگنال خرید در پایین کانال
     if abs(last['close'] - lower_band) / lower_band < 0.005:
         entry = last['close']
         sl = lower_band * 0.99
-        tp = (lower_band + upper_band) / 2
 
-        if not validate_sl_tp(entry, sl, tp):
+        # ✅ اگر SL خیلی دور بود، آن را محدود کن
+        if (entry - sl) > max_sl_distance:
+            sl = entry - max_sl_distance
+
+        # ✅ TP = SL × نسبت R:R
+        tp = entry + (entry - sl) * risk_reward_ratio
+
+        if sl >= entry or tp <= entry or sl >= tp:
             return None
 
         return {
@@ -78,9 +64,13 @@ def apply_range_strategy(df, adx_threshold=20):
     elif abs(last['close'] - upper_band) / upper_band < 0.005:
         entry = last['close']
         sl = upper_band * 1.01
-        tp = (lower_band + upper_band) / 2
 
-        if not validate_sl_tp(entry, sl, tp):
+        if (sl - entry) > max_sl_distance:
+            sl = entry + max_sl_distance
+
+        tp = entry - (sl - entry) * risk_reward_ratio
+
+        if sl <= entry or tp >= entry or sl <= tp:
             return None
 
         return {
@@ -91,4 +81,4 @@ def apply_range_strategy(df, adx_threshold=20):
             'regime': 'Range'
         }
 
-    return None
+    return Noneع
