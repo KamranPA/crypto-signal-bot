@@ -1,152 +1,64 @@
-# backtest_runner.py
-"""
-Runner اصلی بک‌تست: دریافت ورودی‌ها، اجرای بک‌تست و ارسال گزارش به تلگرام
-اجرا می‌شود توسط GitHub Actions با ورودی کاربر
-"""
+# .github/workflows/backtest.yml
 
-import os
-import pandas as pd
-import traceback
+name: 🚀 Backtest Runner (Manual)
 
-# ماژول‌های سیستم شما
-from src.data.data_fetcher import fetch_data
-from src.strategy.trading_system import get_signal
-from src.backtest.backtester import run_backtest
-from src.utils.telegram_notifier import send_telegram_message
+on:
+  workflow_dispatch:  # این کلید فعال‌سازی دکمه "Run workflow" است
+    inputs:
+      symbol:
+        description: '🔹 نماد مورد نظر (مثلاً BTC/USDT)'
+        required: true
+        default: 'BTC/USDT'
+        type: string
 
+      timeframe:
+        description: '🔹 تایم‌فریم (پشتیبانی از: 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d)'
+        required: true
+        default: '1h'
+        type: string
+        # اختیاری: می‌توانید از گزینه‌های ثابت استفاده کنید
+        # options: ['15m', '30m', '1h', '4h', '1d']
 
-def format_backtest_report(result, symbol, timeframe, start_date, end_date):
-    """
-    تولید گزارش زیبا و خوانا برای ارسال به تلگرام
-    """
-    total = result['total_trades']
-    win_rate = result['win_rate']
-    pnl = result['total_pnl_usd']
-    final_cap = result['final_capital']
-    dd = result['drawdown']
-    win_count = result['winning_trades']
-    lose_count = result['losing_trades']
+      start_date:
+        description: '🔹 تاریخ شروع (فرمت: YYYY-MM-DD)'
+        required: true
+        default: '2024-05-01'
+        type: string
 
-    # خلاصه
-    report = f"""
-🚀 بک‌تست انجام شد!
-——————————————
-🔹 نماد: {symbol}
-🔹 تایم‌فریم: {timeframe}
-🔹 دوره: {start_date} تا {end_date}
-🔹 سرمایه اولیه: $1000
-——————————————
-📊 عملکرد کلی:
-• سود/ضرر کلی: ${pnl:+.2f}
-• سرمایه نهایی: ${final_cap:.2f}
-• تعداد معاملات: {total}
-• نرخ برد: {win_rate:.1f}% ({win_count} برد / {lose_count} باخت)
-• ضرر حداکثر (Drawdown): {dd:.1f}%
-——————————————
-"""
+      end_date:
+        description: '🔹 تاریخ پایان (فرمت: YYYY-MM-DD)'
+        required: true
+        default: '2024-06-01'
+        type: string
 
-    if total == 0:
-        report += "❌ هیچ سیگنالی تولید نشد.\n"
-        return report
+jobs:
+  run-backtest:
+    name: اجرای بک‌تست
+    runs-on: ubuntu-latest
 
-    report += "📌 جزئیات معاملات:\n\n"
+    steps:
+      - name: 🔻 دریافت کد
+        uses: actions/checkout@v3
 
-    for i, trade in enumerate(result['trades'], 1):
-        side_icon = "🟢 خرید" if trade['type'] == 'long' else "🔴 فروش"
-        exit_icon = "✅" if trade['pnl_usd'] > 0 else "❌"
-        regime = trade.get('regime', 'Unknown')
+      - name: 🐍 نصب پایتون
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-        report += (
-            f"{i}. {side_icon} | {regime}\n"
-            f"   🕒 {trade['start']} → {trade['end']}\n"
-            f"   💹 ورود: {trade['entry']:.6f}\n"
-            f"   🟢 حد سود: {trade['tp']:.6f}\n"
-            f"   🔴 حد ضرر: {trade['sl']:.6f}\n"
-            f"   📤 خروج: {trade['exit']:.6f} ({trade['exit_type']})\n"
-            f"   {exit_icon} سود/ضرر: ${trade['pnl_usd']:+.2f} ({trade['pnl_percent']:+.2f}%)\n"
-            f"   💰 سرمایه پس از: ${trade['capital_after']:.2f}\n\n"
-        )
+      - name: 📦 نصب وابستگی‌ها
+        run: |
+          pip install pandas numpy requests
 
-    return report
+      - name: 🏃 اجرای بک‌تست
+        env:
+          SYMBOL: ${{ inputs.symbol }}
+          TIMEFRAME: ${{ inputs.timeframe }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python backtest_runner.py
 
-
-def send_long_message(text, max_length=4096):
-    """
-    ارسال پیام‌های طولانی به تلگرام در چند قسمت
-    """
-    while len(text) > max_length:
-        part = text[:max_length]
-        last_nl = part.rfind('\n')
-        if last_nl != -1 and len(text) > max_length:
-            part = text[:last_nl]
-            text = text[last_nl:]
-        else:
-            part = text[:max_length]
-            text = text[max_length:]
-        send_telegram_message(part)
-    if text.strip():
-        send_telegram_message(text)
-
-
-def main():
-    try:
-        # --- دریافت ورودی‌ها از متغیرهای محیطی ---
-        symbol_input = os.getenv("SYMBOL", "BTC/USDT")
-        timeframe = os.getenv("TIMEFRAME", "1h")
-        start_date_str = os.getenv("START_DATE", "2024-05-01")
-        end_date_str = os.getenv("END_DATE", "2024-06-01")
-
-        # --- پاک‌سازی ورودی‌ها ---
-        symbol = symbol_input.replace("/", "").strip().upper()  # BTCUSDT
-        base_symbol = symbol_input.split("/")[0]  # BTC
-
-        start_date = pd.to_datetime(start_date_str)
-        end_date = pd.to_datetime(end_date_str)
-
-        # --- دریافت داده ---
-        df = fetch_data(symbol, timeframe, start_date, end_date)
-        if df.empty:
-            error_msg = f"❌ داده‌ای برای {symbol} در تایم‌فریم {timeframe} یافت نشد."
-            send_telegram_message(error_msg)
-            return
-
-        if len(df) < 50:
-            error_msg = f"❌ داده کافی برای {symbol} در {timeframe} موجود نیست."
-            send_telegram_message(error_msg)
-            return
-
-        # --- اجرای بک‌تست ---
-        result = run_backtest(df, get_signal, initial_capital=1000.0, leverage=10)
-
-        # --- تولید گزارش ---
-        report = format_backtest_report(
-            result=result,
-            symbol=symbol_input,
-            timeframe=timeframe,
-            start_date=start_date_str,
-            end_date=end_date_str
-        )
-
-        # --- ارسال به تلگرام ---
-        send_long_message(report)
-
-        # --- پیام پایانی ---
-        summary = (
-            f"✅ بک‌تست {symbol_input} در تایم‌فریم {timeframe} با موفقیت انجام شد.\n"
-            f"📊 تعداد معاملات: {result['total_trades']} | سود کلی: ${result['total_pnl_usd']:+.2f}"
-        )
-        send_telegram_message(summary)
-
-    except Exception as e:
-        error_msg = (
-            f"❌ خطا در اجرای بک‌تست:\n\n"
-            f"<b>نماد:</b> {os.getenv('SYMBOL', 'N/A')}\n"
-            f"<b>تایم‌فریم:</b> {os.getenv('TIMEFRAME', 'N/A')}\n"
-            f"<b>خطا:</b> {str(e)}\n\n"
-            f"<pre>{traceback.format_exc()}</pre>"
-        )
-        send_telegram_message(error_msg)
-
-
-if __name__ == "__main__":
-    main()
+      - name: ✅ موفقیت‌آمیز
+        run: echo "بک‌تست با موفقیت اجرا شد."
