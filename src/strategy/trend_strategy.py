@@ -1,7 +1,7 @@
 # src/strategy/trend_strategy.py
 
+import pandas as pd
 from regime_detection.range_detector import is_range_regime
-
 def apply_trend_strategy(df, adx_threshold=20, volume_ratio_threshold=1.2):
     """
     استراتژی روند: فقط در شرایط روند قوی و با تأیید حجم
