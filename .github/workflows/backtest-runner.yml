@@ -1,55 +1,45 @@
-# .github/workflows/backtest.yml
-
-name: 🚀 Backtest Runner (Manual)
+name: 🚀 Manual Backtest
 
 on:
-  workflow_dispatch:  # این کلید فعال‌سازی دکمه "Run workflow" است
+  workflow_dispatch:
     inputs:
       symbol:
-        description: '🔹 نماد مورد نظر (مثلاً BTC/USDT)'
+        description: '🔹 نماد (مثلاً BTC/USDT)'
         required: true
         default: 'BTC/USDT'
         type: string
-
       timeframe:
-        description: '🔹 تایم‌فریم (پشتیبانی از: 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d)'
+        description: '🔹 تایم‌فریم (15m, 30m, 1h)'
         required: true
         default: '1h'
         type: string
-        # اختیاری: می‌توانید از گزینه‌های ثابت استفاده کنید
-        # options: ['15m', '30m', '1h', '4h', '1d']
-
       start_date:
-        description: '🔹 تاریخ شروع (فرمت: YYYY-MM-DD)'
+        description: '🔹 تاریخ شروع (YYYY-MM-DD)'
         required: true
         default: '2024-05-01'
         type: string
-
       end_date:
-        description: '🔹 تاریخ پایان (فرمت: YYYY-MM-DD)'
+        description: '🔹 تاریخ پایان (YYYY-MM-DD)'
         required: true
         default: '2024-06-01'
         type: string
 
 jobs:
-  run-backtest:
-    name: اجرای بک‌تست
+  backtest:
     runs-on: ubuntu-latest
-
     steps:
-      - name: 🔻 دریافت کد
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: 🐍 نصب پایتون
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: 📦 نصب وابستگی‌ها
+      - name: Install dependencies
         run: |
           pip install pandas numpy requests
 
-      - name: 🏃 اجرای بک‌تست
+      - name: Run backtest
         env:
           SYMBOL: ${{ inputs.symbol }}
           TIMEFRAME: ${{ inputs.timeframe }}
@@ -58,7 +48,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python backtest_runner.py
-
-      - name: ✅ موفقیت‌آمیز
-        run: echo "بک‌تست با موفقیت اجرا شد."
+          python src/backtest/backtester.py
