@@ -1,5 +1,8 @@
 # src/strategy/breakout_strategy.py
 
+import pandas as pd
+import numpy as np
+
 def apply_breakout_strategy(df, volume_ratio_threshold=1.8, min_body_ratio=0.6):
     """
     استراتژی شکست: فقط در بازارهای شکست
