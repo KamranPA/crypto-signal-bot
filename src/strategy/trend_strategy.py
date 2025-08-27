@@ -1,6 +1,8 @@
 # src/strategy/trend_strategy.py
 
 import pandas as pd
+import numpy as np
+
 from regime_detection.range_detector import is_range_regime
 def apply_trend_strategy(df, adx_threshold=20, volume_ratio_threshold=1.2):
     """
