@@ -27,6 +27,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
         window = df.iloc[:i+1].copy()
         signal_result = strategy_func(window)
 
+        # --- فیلتر سیگنال نامعتبر ---
         if signal_result is None:
             continue
 
@@ -36,14 +37,14 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
         tp = signal_result.get('take_profit')
         regime = signal_result.get('regime', 'Unknown')
 
-        # فیلتر مقادیر نامعتبر
+        # --- فیلتر مقادیر نامعتبر ---
         if entry is None or sl is None or tp is None:
             continue
         if (signal == 'BUY' and (sl >= entry or tp <= entry)) or \
            (signal == 'SELL' and (sl <= entry or tp >= entry)):
             continue
 
-        # ورود به معامله خرید
+        # --- ورود به معامله خرید ---
         if signal == 'BUY' and not position:
             position_size = current_capital * leverage
             position = {
@@ -56,7 +57,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 'regime': regime
             }
 
-        # ورود به معامله فروش
+        # --- ورود به معامله فروش ---
         elif signal == 'SELL' and not position:
             position_size = current_capital * leverage
             position = {
@@ -69,7 +70,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 'regime': regime
             }
 
-        # بررسی خروج از معامله
+        # --- بررسی خروج از معامله ---
         if position:
             current = df.iloc[i]
             exit_price = None
@@ -91,7 +92,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                     exit_price = position['tp']
                     exit_type = 'TP'
 
-            # اگر خروج اتفاق افتاد
+            # --- اگر خروج اتفاق افتاد ---
             if exit_price is not None:
                 # محاسبه تغییر قیمت
                 if position['type'] == 'long':
@@ -120,8 +121,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 })
                 position = None
 
-    # محاسبه آمار نهایی
-    total_pnl_usd = sum(t['pnl_usd'] for t in trades)
+    # --- محاسبه آمار نهایی ---
     total_trades = len(trades)
     winning_trades = len([t for t in trades if t['pnl_usd'] > 0])
     win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
@@ -132,14 +132,14 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
     drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
     max_drawdown = drawdown_pct.max()
 
-    # بازگشت نتیجه
+    # --- بازگشت نتیجه ---
     return {
         'total_trades': total_trades,
         'winning_trades': winning_trades,
         'losing_trades': total_trades - winning_trades,
         'win_rate': win_rate,
         'drawdown': round(max_drawdown, 2),
-        'total_pnl_usd': round(total_pnl_usd, 2),
+        'total_pnl_usd': round(sum(t['pnl_usd'] for t in trades), 2),
         'final_capital': round(current_capital, 2),
         'trades': trades
     }
@@ -147,9 +147,8 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
 
 def format_report(result, symbol, timeframe, start_date, end_date):
     """تولید گزارش زیبا برای ارسال به تلگرام"""
-    try:
-        r = result
-        report = f"""
+    r = result
+    report = f"""
 🚀 بک‌تست انجام شد!
 ——————————————
 🔹 نماد: {symbol}
@@ -160,34 +159,29 @@ def format_report(result, symbol, timeframe, start_date, end_date):
 📊 آمار کلی:
 • سود/ضرر: ${r['total_pnl_usd']:+.2f}
 • سرمایه نهایی: ${r['final_capital']:.2f}
-• تعداد معاملات: {r['total_trades']}
-• نرخ برد: {r['win_rate']}%
+• معاملات: {r['total_trades']} | برد: {r['win_rate']}%
 • ضرر حداکثر: {r['drawdown']}%
 """
 
-        if r['total_trades'] == 0:
-            report += "\n❌ هیچ سیگنالی تولید نشد."
-            return report
-
-        report += "\n\n📌 جزئیات معاملات:\n"
-        for i, t in enumerate(r['trades'], 1):
-            side = "🟢 خرید" if t['type'] == 'long' else "🔴 فروش"
-            pnl_icon = "✅" if t['pnl_usd'] > 0 else "❌"
-            report += (
-                f"{i}. {side} | {t['regime']}\n"
-                f"   📅 {t['start']} → {t['end']}\n"
-                f"   💹 ورود: {t['entry']:.6f}\n"
-                f"   🟢 حد سود: {t['tp']:.6f}\n"
-                f"   🔴 حد ضرر: {t['sl']:.6f}\n"
-                f"   📤 خروج: {t['exit']:.6f} ({t['exit_type']})\n"
-                f"   {pnl_icon} سود: ${t['pnl_usd']:+.2f}\n"
-                f"   💰 پس از: ${t['capital_after']:.2f}\n\n"
-            )
+    if r['total_trades'] == 0:
+        report += "\n❌ هیچ سیگنالی تولید نشد."
         return report
-    except Exception as e:
-        error = f"❌ خطای فرمت گزارش: {str(e)}"
-        print(error)
-        return error
+
+    report += "\n\n📌 معاملات:\n"
+    for i, t in enumerate(r['trades'], 1):
+        side = "🟢 خرید" if t['type'] == 'long' else "🔴 فروش"
+        pnl_icon = "✅" if t['pnl_usd'] > 0 else "❌"
+        report += (
+            f"{i}. {side} | {t['regime']}\n"
+            f"   📅 {t['start']} → {t['end']}\n"
+            f"   💹 ورود: {t['entry']:.6f}\n"
+            f"   🟢 حد سود: {t['tp']:.6f}\n"
+            f"   🔴 حد ضرر: {t['sl']:.6f}\n"
+            f"   📤 خروج: {t['exit']:.6f} ({t['exit_type']})\n"
+            f"   {pnl_icon} سود: ${t['pnl_usd']:+.2f}\n"
+            f"   💰 پس از: ${t['capital_after']:.2f}\n\n"
+        )
+    return report
 
 
 def main():
