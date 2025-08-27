@@ -5,7 +5,6 @@ import requests
 from datetime import datetime
 import json
 
-# نگاشت تایم‌فریم‌ها به فرمت CoinEx
 TIMEFRAME_MAP = {
     '1m': '1m',
     '3m': '3m',
@@ -24,9 +23,6 @@ TIMEFRAME_MAP = {
 }
 
 def fetch_data(symbol, timeframe, start_date, end_date):
-    """
-    دریافت داده کندلی از صرافی CoinEx
-    """
     print(f"🔍 Debug: Fetching data for {symbol}, timeframe={timeframe}, start={start_date}, end={end_date}")
 
     # 1. تبدیل نماد: BTC/USDT → BTCUSDT
@@ -59,12 +55,17 @@ def fetch_data(symbol, timeframe, start_date, end_date):
     current_start = start_timestamp
 
     while current_start < end_timestamp:
+        # محدودیت: حداکثر 30 روز در هر درخواست
+        max_to = current_start + 3600 * 24 * 30  # 30 روز
+        to = min(max_to, end_timestamp)
+        print(f"🔄 Request from: {current_start}, to: {to}")
+
         params = {
             'market': market,
             'type': interval,
             'limit': 1000,
             'from': current_start,
-            'to': min(current_start + 3600 * 24 * 30, end_timestamp)  # حداکثر 30 روز
+            'to': to
         }
         print(f"🔄 Request params: {json.dumps(params, ensure_ascii=False)}")
 
