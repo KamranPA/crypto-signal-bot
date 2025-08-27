@@ -3,18 +3,17 @@
 import requests
 import os
 
-# خواندن توکن و آی‌دی از متغیرهای محیطی
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+MAX_LENGTH = 4096  # حداکثر طول پیام در تلگرام
 
 
 def send_telegram_message(text):
     """
-    ارسال پیام به تلگرام
-    :param text: متن پیام (با پشتیبانی از HTML)
+    ارسال یک پیام به تلگرام
     """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ خطای ارسال تلگرام: TELEGRAM_BOT_TOKEN یا TELEGRAM_CHAT_ID تنظیم نشده است.")
+        print("❌ خطای ارسال تلگرام: توکن یا آی‌دی تنظیم نشده است.")
         return False
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -30,31 +29,37 @@ def send_telegram_message(text):
         if response.status_code == 200:
             return True
         else:
-            print(f"❌ ارسال پیام ناموفق. کد وضعیت: {response.status_code}, پاسخ: {response.text}")
+            print(f"❌ ارسال ناموفق. کد: {response.status_code}, پاسخ: {response.text}")
             return False
     except Exception as e:
-        print(f"❌ خطای ارسال تلگرام: {e}")
+        print(f"❌ خطای ارسال: {e}")
         return False
 
 
-def send_long_message(text, max_length=4096):
+def send_long_message(text):
     """
-    ارسال پیام‌های طولانی به صورت چند بخشی
+    ارسال پیام‌های طولانی به صورت چند قسمت
     """
-    while len(text) > max_length:
-        # پیدا کردن آخرین خط‌جدید قبل از حد
-        part = text[:max_length]
+    while len(text) > MAX_LENGTH:
+        # پیدا کردن آخرین نقطه منطقی برای شکستن پیام (مثلاً قبل از شروع معامله جدید)
+        part = text[:MAX_LENGTH]
         last_newline = part.rfind('\n')
-        if last_newline != -1 and len(text) > max_length:
-            part = text[:last_newline]
+        
+        # اگر خط جدید وجود داشت، تا آخرین خط ببر
+        if last_newline > 0:
+            part = text[:last_newline + 1]  # شامل \n
             text = text[last_newline + 1:]
         else:
-            part = text[:max_length]
-            text = text[max_length:]
+            # اگر خط جدید نبود، دقیقاً در حد ببر
+            part = text[:MAX_LENGTH]
+            text = text[MAX_LENGTH:]
         
+        # ارسال قسمت
         if not send_telegram_message(part):
-            return False  # اگر ارسال نشد، متوقف شو
+            print("❌ ارسال قسمتی از پیام ناموفق بود.")
+            return False
 
+    # ارسال باقی‌مانده
     if text.strip():
         return send_telegram_message(text)
     
