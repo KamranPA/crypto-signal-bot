@@ -24,7 +24,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
     current_capital = initial_capital
 
     for i in range(50, len(df)):
-        window = df.iloc[:i+1].copy()
+        window = df.hloc[:i+1].copy()
         signal_result = strategy_func(window)
 
         # --- فیلتر سیگنال نامعتبر ---
