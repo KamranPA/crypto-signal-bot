@@ -3,20 +3,14 @@
 from regime_detection.range_detector import is_range_regime
 
 def apply_trend_strategy(df, adx_threshold=25, volume_ratio_threshold=1.2):
-    """
-    استراتژی روند: فقط در بازارهای غیررنج و با روند قوی
-    """
     if len(df) < 50:
         return None
 
-    # --- 1. فیلتر بازار رنج ---
     if is_range_regime(df):
         return None
 
-    # --- 2. محاسبه EMA 21 ---
     ema_21 = df['close'].ewm(span=21, adjust=False).mean()
 
-    # --- 3. محاسبه ADX بدون ta ---
     def calculate_adx(high, low, close, window=14):
         tr1 = high - low
         tr2 = abs(high - close.shift(1))
@@ -41,29 +35,15 @@ def apply_trend_strategy(df, adx_threshold=25, volume_ratio_threshold=1.2):
         return adx
 
     adx_value = calculate_adx(df['high'], df['low'], df['close'], window=14).iloc[-1]
-
-    # --- 4. محاسبه ATR ---
-    tr1 = df['high'] - df['low']
-    tr2 = abs(df['high'] - df['close'].shift(1))
-    tr3 = abs(df['low'] - df['close'].shift(1))
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1/14, adjust=False).mean().iloc[-1]
-
-    # --- 5. فیلتر حجم ---
     volume_avg = df['volume'].rolling(20).mean().iloc[-1]
     volume_ratio = df['volume'].iloc[-1] / volume_avg
 
-    # --- 6. شرط روند قوی ---
     if adx_value >= adx_threshold and volume_ratio >= volume_ratio_threshold:
-        # BUY: عبور از EMA به سمت بالا
         if df['close'].iloc[-1] > ema_21.iloc[-1] and df['close'].iloc[-2] <= ema_21.iloc[-2]:
             entry = df['close'].iloc[-1]
-            sl = min(df['low'].iloc[-2], entry - 1.5 * atr)
-            tp = entry + 2.5 * atr
-
+            sl = min(df['low'].iloc[-2], entry - 1.5 * 14))
             if sl >= entry or tp <= entry or sl >= tp:
                 return None
-
             return {
                 'signal': 'BUY',
                 'entry': entry,
@@ -71,16 +51,11 @@ def apply_trend_strategy(df, adx_threshold=25, volume_ratio_threshold=1.2):
                 'take_profit': tp,
                 'regime': 'Strong Trend_Up'
             }
-
-        # SELL: عبور از EMA به سمت پایین
         elif df['close'].iloc[-1] < ema_21.iloc[-1] and df['close'].iloc[-2] >= ema_21.iloc[-2]:
             entry = df['close'].iloc[-1]
-            sl = max(df['high'].iloc[-2], entry + 1.5 * atr)
-            tp = entry - 2.5 * atr
-
+            sl = max(df['high'].iloc[-2], entry + 1.5 * 14))
             if sl <= entry or tp >= entry or sl <= tp:
                 return None
-
             return {
                 'signal': 'SELL',
                 'entry': entry,
@@ -88,5 +63,4 @@ def apply_trend_strategy(df, adx_threshold=25, volume_ratio_threshold=1.2):
                 'take_profit': tp,
                 'regime': 'Strong Trend_Down'
             }
-
     return None
