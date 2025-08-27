@@ -1,6 +1,6 @@
 # src/regime_detection/breakout_detector.py
 
-from range_detector import is_range_regime
+from regime_detection.range_detector import is_range_regime
 
 def is_breakout_regime(df, window=20, volume_ratio_threshold=1.3):
     if len(df) < window + 2:
