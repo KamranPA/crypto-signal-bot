@@ -1,99 +1,138 @@
-# src/strategy/trend_strategy.py
+# src/data/data_fetcher.py
 
-from regime_detection.range_detector import is_range_regime
+import pandas as pd
+import requests
+import time
+from datetime import datetime
+import json
 
-def apply_trend_strategy(df, adx_threshold=20, volume_ratio_threshold=1.2):
+# نگاشت تایم‌فریم‌ها به فرمت دقیق CoinEx
+TIMEFRAME_MAP = {
+    '1m': '1min',
+    '3m': '3min',
+    '5m': '5min',
+    '15m': '15min',
+    '30m': '30min',
+    '1h': '1hour',
+    '2h': '2hour',
+    '4h': '4hour',
+    '6h': '6hour',
+    '12h': '12hour',
+    '1d': '1day',
+    '3d': '3day',
+    '1w': '1week',
+    '1M': '1mon'
+}
+
+def fetch_data(symbol, timeframe, start_date, end_date):
     """
-    استراتژی روند: فقط در شرایط روند قوی و با تأیید حجم
-    ✅ رژیم‌محور: نه مسدود می‌شود توسط رنج، اما اولویت را می‌دهد
+    دریافت داده کندلی از صرافی CoinEx
+    
+    ورودی:
+        symbol: مثلاً "BTC/USDT"
+        timeframe: مثلاً "1h"
+        start_date: تاریخ شروع (رشته یا datetime)
+        end_date: تاریخ پایان (رشته یا datetime)
+    
+    خروجی:
+        دیتافریم با ستون‌های: timestamp, open, high, low, close, volume
+        اگر خطا داشت یا داده‌ای نبود، یک دیتافریم خالی برمی‌گرداند
     """
-    if len(df) < 50:
-        return None
+    print(f"🔍 دریافت داده برای {symbol}, تایم‌فریم={timeframe}, بازه={start_date} تا {end_date}")
 
-    # --- 1. محاسبه EMA 21 ---
-    ema_21 = df['close'].ewm(span=21, adjust=False).mean()
+    # 1. تبدیل نماد: BTC/USDT → BTCUSDT
+    market = symbol.replace("/", "").upper()
+    print(f"✅ نماد: {market}")
 
-    # --- 2. محاسبه ADX بدون ta ---
-    def calculate_adx(high, low, close, window=14):
-        tr1 = high - low
-        tr2 = abs(high - close.shift(1))
-        tr3 = abs(low - close.shift(1))
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    # 2. تبدیل تایم‌فریم به فرمت CoinEx
+    if timeframe.lower() not in TIMEFRAME_MAP:
+        print(f"❌ تایم‌فریم نامعتبر: '{timeframe}'. پشتیبانی: {list(TIMEFRAME_MAP.keys())}")
+        return pd.DataFrame()
 
-        up_move = high.diff()
-        down_move = low.diff()
-        pos_dm = ((up_move > down_move) & (up_move > 0)) * up_move
-        neg_dm = ((down_move > up_move) & (down_move > 0)) * down_move
+    interval = TIMEFRAME_MAP[timeframe.lower()]
+    print(f"✅ تایم‌فریم: {interval}")
 
-        alpha = 2 / (window + 1)
-        smoothed_pos_dm = pos_dm.ewm(alpha=alpha, min_periods=1).mean()
-        smoothed_neg_dm = neg_dm.ewm(alpha=alpha, min_periods=1).mean()
-        atr = tr.ewm(alpha=alpha, min_periods=1).mean()
+    # 3. تبدیل تاریخ به ثانیه
+    try:
+        start_timestamp = int(pd.to_datetime(start_date).timestamp())
+        end_timestamp = int(pd.to_datetime(end_date).timestamp())
+        print(f"✅ شروع: {start_timestamp} | پایان: {end_timestamp}")
+    except Exception as e:
+        print(f"❌ خطای تاریخ: {e}")
+        return pd.DataFrame()
 
-        di_plus = (smoothed_pos_dm / atr) * 100
-        di_minus = (smoothed_neg_dm / atr) * 100
-        dx = abs(di_plus - di_minus) / (di_plus + di_minus + 1e-8) * 100
-        adx = dx.ewm(alpha=alpha, min_periods=1).mean()
+    # 4. URL API CoinEx
+    url = "https://api.coinex.com/v1/market/kline"
+    print(f"✅ URL: {url}")
 
-        return adx
+    all_data = []
+    current_start = start_timestamp
 
-    adx_value = calculate_adx(df['high'], df['low'], df['close'], window=14).iloc[-1]
+    # 5. دریافت داده به صورت صفحه‌بندی شده (حداکثر 30 روز در هر درخواست)
+    while current_start < end_timestamp:
+        max_to = current_start + 3600 * 24 * 30  # حداکثر 30 روز
+        to = min(max_to, end_timestamp)
+        print(f"🔄 درخواست: از {current_start} تا {to}")
 
-    # --- 3. محاسبه ATR ---
-    tr1 = df['high'] - df['low']
-    tr2 = abs(df['high'] - df['close'].shift(1))
-    tr3 = abs(df['low'] - df['close'].shift(1))
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1/14, adjust=False).mean().iloc[-1]
+        params = {
+            'market': market,
+            'type': interval,
+            'limit': 1000,
+            'from': current_start,
+            'to': to
+        }
+        print(f"🔄 پارامترها: {json.dumps(params, ensure_ascii=False)}")
 
-    # --- 4. فیلتر حجم ---
-    volume_avg = df['volume'].rolling(20).mean().iloc[-1]
-    volume_ratio = df['volume'].iloc[-1] / volume_avg
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            print(f"✅ وضعیت پاسخ: {response.status_code}")
 
-    # --- 5. دیباگ: چاپ وضعیت فعلی ---
-    print(f"📊 Trend Strategy Debug:")
-    print(f"   ADX: {adx_value:.2f} (حداقل: {adx_threshold})")
-    print(f"   حجم نسبی: {volume_ratio:.2f} (حداقل: {volume_ratio_threshold})")
-    print(f"   رنج؟ {is_range_regime(df)}")
+            data = response.json()
+            print(f"✅ پاسخ JSON: {json.dumps(data, ensure_ascii=False, indent=2)}")
 
-    # --- 6. شرط اصلی: روند قوی و حجم بالا ---
-    if adx_value >= adx_threshold and volume_ratio >= volume_ratio_threshold:
-        # BUY: عبور از EMA به سمت بالا
-        if df['close'].iloc[-1] > ema_21.iloc[-1] and df['close'].iloc[-2] <= ema_21.iloc[-2]:
-            entry = df['close'].iloc[-1]
-            sl = min(df['low'].iloc[-2], entry - 1.5 * atr)
-            tp = entry + 2.5 * atr
+            if data.get('code') != 0:
+                error_msg = data.get('message', 'خطای ناشناخته')
+                print(f"❌ خطای CoinEx: کد={data['code']}, پیام='{error_msg}'")
+                return pd.DataFrame()
 
-            if sl >= entry or tp <= entry or sl >= tp:
-                return None
+            klines = data['data']
+            print(f"✅ {len(klines)} کندل دریافت شد")
 
-            return {
-                'signal': 'BUY',
-                'entry': entry,
-                'stop_loss': sl,
-                'take_profit': tp,
-                'regime': 'Strong Trend_Up',
-                'adx': adx_value,
-                'volume_ratio': volume_ratio
-            }
+            if not klines:
+                break  # داده‌ای وجود ندارد
 
-        # SELL: عبور از EMA به سمت پایین
-        elif df['close'].iloc[-1] < ema_21.iloc[-1] and df['close'].iloc[-2] >= ema_21.iloc[-2]:
-            entry = df['close'].iloc[-1]
-            sl = max(df['high'].iloc[-2], entry + 1.5 * atr)
-            tp = entry - 2.5 * atr
+            all_data.extend(klines)
 
-            if sl <= entry or tp >= entry or sl <= tp:
-                return None
+            # به‌روزرسانی زمان شروع برای درخواست بعدی
+            last_timestamp = klines[-1][0]
+            if last_timestamp <= current_start:
+                break  # جلوگیری از حلقه بی‌نهایت
+            current_start = last_timestamp + 1
 
-            return {
-                'signal': 'SELL',
-                'entry': entry,
-                'stop_loss': sl,
-                'take_profit': tp,
-                'regime': 'Strong Trend_Down',
-                'adx': adx_value,
-                'volume_ratio': volume_ratio
-            }
+        except Exception as e:
+            print(f"❌ خطای ارتباط با CoinEx: {e}")
+            return pd.DataFrame()
 
-    return None
+        # جلوگیری از محدودیت نرخ درخواست
+        time.sleep(0.1)
+
+    # 6. اگر داده‌ای دریافت نشد
+    if not all_data:
+        print(f"❌ هیچ داده‌ای برای {symbol} در تایم‌فریم {timeframe} یافت نشد.")
+        return pd.DataFrame()
+
+    # 7. ساخت دیتافریم
+    df = pd.DataFrame(all_data, columns=[
+        'timestamp', 'open', 'high', 'low', 'close', 'volume', 'amount'
+    ])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+    df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+    df[['open', 'high', 'low', 'close', 'volume']] = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
+    df = df.set_index('timestamp')
+    df = df.sort_index()
+
+    # 8. فیلتر بر اساس بازه زمانی
+    df = df.loc[start_date:end_date]
+    print(f"✅ داده نهایی: {df.shape[0]} کندل")
+
+    return df
