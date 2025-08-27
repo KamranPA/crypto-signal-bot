@@ -1,33 +1,34 @@
 # src/strategy/breakout_strategy.py
 
-from regime_detection.breakout_detector import is_breakout_regime
-
-
+def apply_breakout_strategy(df, volume_ratio_threshold=1.8, min_body_ratio=0.6):
+    """
+    استراتژی شکست: فقط در بازارهای شکست
+    """
     if len(df) < 50:
         return None
 
-    tr1 = df['high'] - df['low']
-    tr2 = abs(df['high'] - df['close'].shift(1))
-    tr3 = abs(df['low'] - df['close'].shift(1))
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1/14, adjust=False).mean().iloc[-1]
+    # محاسبه حجم
+    volume_avg = df['volume'].rolling(20).mean().iloc[-1]
+    volume_ratio = df['volume'].iloc[-1] / volume_avg
 
-    last = df.iloc[-1]
-    body_size = abs(last['close'] - last['open'])
-
-    if not is_breakout_regime(df, window=20, volume_ratio_threshold=volume_ratio_threshold):
+    # بررسی حجم
+    if volume_ratio < volume_ratio_threshold:
         return None
 
-    if body_size < min_body_ratio * atr:
+    # بررسی بدن کندل
+    body_size = abs(df['close'].iloc[-1] - df['open'].iloc[-1])
+    atr = df['high'] - df['low']
+    avg_atr = atr.rolling(14).mean().iloc[-1]
+
+    if body_size < min_body_ratio * avg_atr:
         return None
 
+    # شرط شکست بالا
     recent_high = df['high'].rolling(20).max().iloc[-2]
-    recent_low = df['low'].rolling(20).min().iloc[-2]
-
-    if last['high'] > recent_high and last['close'] > recent_high:
-        entry = last['close']
+    if df['high'].iloc[-1] > recent_high and df['close'].iloc[-1] > recent_high:
+        entry = df['close'].iloc[-1]
         sl = recent_high * 0.995
-        tp = entry + 2.5 * atr
+        tp = entry + 2.5 * avg_atr
         if sl >= entry or tp <= entry or sl >= tp:
             return None
         return {
@@ -38,10 +39,12 @@ from regime_detection.breakout_detector import is_breakout_regime
             'regime': 'Breakout Confirmed'
         }
 
-    elif last['low'] < recent_low and last['close'] < recent_low:
-        entry = last['close']
+    # شرط شکست پایین
+    recent_low = df['low'].rolling(20).min().iloc[-2]
+    if df['low'].iloc[-1] < recent_low and df['close'].iloc[-1] < recent_low:
+        entry = df['close'].iloc[-1]
         sl = recent_low * 1.005
-        tp = entry - 2.5 * atr
+        tp = entry - 2.5 * avg_atr
         if sl <= entry or tp >= entry or sl <= tp:
             return None
         return {
