@@ -1,7 +1,7 @@
 # src/strategy/trading_system.py
 
 """
-مدیریت استراتژی‌های معاملاتی
+مدیریت ترکیبی استراتژی‌های معاملاتی
 ترتیب اولویت:
 1. شکست (Breakout)
 2. روند (Trend)
@@ -21,32 +21,45 @@ def get_signal(df):
     :return: دیکشنری شامل سیگنال و جزئیات یا None
     """
     if len(df) < 50:
+        print("⚠️ get_signal: تعداد کندل‌ها کمتر از 50 است")
         return None
 
     try:
         # --- 1. استراتژی شکست ---
+        print("🔍 بررسی استراتژی شکست...")
         signal = apply_breakout_strategy(df)
         if signal is not None:
-            # اضافه کردن اولویت
+            print(f"✅ سیگنال شکست: {signal['signal']} | ورود: {signal['entry']:.6f}")
             signal['priority'] = 1
             signal['strategy'] = 'Breakout'
             return signal
+        else:
+            print("❌ هیچ سیگنالی از شکست تولید نشد")
 
         # --- 2. استراتژی روند ---
+        print("🔍 بررسی استراتژی روند...")
         signal = apply_trend_strategy(df)
         if signal is not None:
+            print(f"✅ سیگنال روند: {signal['signal']} | ورود: {signal['entry']:.6f}")
             signal['priority'] = 2
             signal['strategy'] = 'Trend'
             return signal
+        else:
+            print("❌ هیچ سیگنالی از روند تولید نشد")
 
         # --- 3. استراتژی رنج ---
+        print("🔍 بررسی استراتژی رنج...")
         signal = apply_range_strategy(df)
         if signal is not None:
+            print(f"✅ سیگنال رنج: {signal['signal']} | ورود: {signal['entry']:.6f}")
             signal['priority'] = 3
             signal['strategy'] = 'Range'
             return signal
+        else:
+            print("❌ هیچ سیگنالی از رنج تولید نشد")
 
         # --- هیچ سیگنالی تولید نشد ---
+        print("❌ هیچ سیگنالی در هیچ استراتژی تولید نشد")
         return None
 
     except Exception as e:
@@ -57,7 +70,6 @@ def get_signal(df):
 # --- برای تست دستی (اختیاری) ---
 if __name__ == "__main__":
     import pandas as pd
-    # این بخش فقط برای تست محلی است
     print("✅ trading_system.py با موفقیت بارگذاری شد.")
     print("📌 توابع موجود:")
     print("   - apply_trend_strategy")
