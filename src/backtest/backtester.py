@@ -5,20 +5,16 @@ import os
 import pandas as pd
 import traceback
 
-# --- اضافه کردن مسیر ریشه پروژه به sys.path ---
-# این کار به ما اجازه می‌دهد از ماژول‌ها بدون پیشوند 'src' استفاده کنیم
+# افزودن مسیر ریشه پروژه به sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# --- ماژول‌های داخلی ---
+# ماژول‌های داخلی
 from data.data_fetcher import fetch_data
 from strategy.trading_system import get_signal
 from utils.telegram_notifier import send_telegram_message
 
 
 def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
-    """
-    اجرای بک‌تست روی داده‌ها با مدیریت موقعیت، SL/TP و محاسبه سود/ضرر
-    """
     trades = []
     position = None
     current_capital = initial_capital
@@ -36,14 +32,12 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
         tp = signal_result.get('take_profit')
         regime = signal_result.get('regime', 'Unknown')
 
-        # فیلتر مقادیر نامعتبر
         if entry is None or sl is None or tp is None:
             continue
-        if (signal == 'BUY' and (sl >= entry or tp <= entry or sl >= tp)) or \
-           (signal == 'SELL' and (sl <= entry or tp >= entry or sl <= tp)):
+        if (signal == 'BUY' and (sl >= entry or tp <= entry)) or \
+           (signal == 'SELL' and (sl <= entry or tp >= entry)):
             continue
 
-        # ورود به معامله خرید
         if signal == 'BUY' and not position:
             position_size = current_capital * leverage
             position = {
@@ -56,7 +50,6 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 'regime': regime
             }
 
-        # ورود به معامله فروش
         elif signal == 'SELL' and not position:
             position_size = current_capital * leverage
             position = {
@@ -69,7 +62,6 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 'regime': regime
             }
 
-        # بررسی خروج از معامله
         if position:
             current = df.iloc[i]
             exit_price = None
@@ -91,19 +83,15 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                     exit_price = position['tp']
                     exit_type = 'TP'
 
-            # اگر خروج اتفاق افتاد
             if exit_price is not None:
-                # محاسبه تغییر قیمت
                 if position['type'] == 'long':
-                    price_change_pct = (exit_price - position['entry']) / position['entry']
+                    change_pct = (exit_price - position['entry']) / position['entry']
                 else:
-                    price_change_pct = (position['entry'] - exit_price) / position['entry']
+                    change_pct = (position['entry'] - exit_price) / position['entry']
 
-                # محاسبه سود/ضرر
-                pnl_usd = position['position_size'] * price_change_pct
+                pnl_usd = position['position_size'] * change_pct
                 current_capital += pnl_usd
 
-                # ذخیره معامله
                 trades.append({
                     'type': position['type'],
                     'entry': position['entry'],
@@ -111,7 +99,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                     'exit_type': exit_type,
                     'start': position['start_time'],
                     'end': current.name,
-                    'pnl_percent': round(price_change_pct * 100, 2),
+                    'pnl_percent': round(change_pct * 100, 2),
                     'pnl_usd': round(pnl_usd, 2),
                     'capital_after': round(current_capital, 2),
                     'sl': position['sl'],
@@ -120,19 +108,16 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 })
                 position = None
 
-    # محاسبه آمار نهایی
     total_pnl_usd = sum(t['pnl_usd'] for t in trades)
     total_trades = len(trades)
     winning_trades = len([t for t in trades if t['pnl_usd'] > 0])
     win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
 
-    # محاسبه ضرر حداکثر (Max Drawdown)
-    capital_curve = [initial_capital] + [t['capital_after'] for t in trades]
+    capital_curve = [1000] + [t['capital_after'] for t in trades]
     peak = pd.Series(capital_curve).cummax()
-    drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
-    max_drawdown = drawdown_pct.max()
+    drawdown = ((peak - pd.Series(capital_curve)) / peak) * 100
+    max_drawdown = drawdown.max()
 
-    # بازگشت نتیجه
     return {
         'total_trades': total_trades,
         'winning_trades': winning_trades,
@@ -146,7 +131,6 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
 
 
 def format_report(result, symbol, timeframe, start_date, end_date):
-    """تولید گزارش زیبا برای ارسال به تلگرام"""
     r = result
     report = f"""
 🚀 بک‌تست انجام شد!
@@ -159,8 +143,7 @@ def format_report(result, symbol, timeframe, start_date, end_date):
 📊 آمار کلی:
 • سود/ضرر: ${r['total_pnl_usd']:+.2f}
 • سرمایه نهایی: ${r['final_capital']:.2f}
-• تعداد معاملات: {r['total_trades']}
-• نرخ برد: {r['win_rate']}%
+• معاملات: {r['total_trades']} | برد: {r['win_rate']}%
 • ضرر حداکثر: {r['drawdown']}%
 """
 
@@ -168,7 +151,7 @@ def format_report(result, symbol, timeframe, start_date, end_date):
         report += "\n❌ هیچ سیگنالی تولید نشد."
         return report
 
-    report += "\n\n📌 جزئیات معاملات:\n"
+    report += "\n\n📌 معاملات:\n"
     for i, t in enumerate(r['trades'], 1):
         side = "🟢 خرید" if t['type'] == 'long' else "🔴 فروش"
         pnl_icon = "✅" if t['pnl_usd'] > 0 else "❌"
@@ -180,19 +163,18 @@ def format_report(result, symbol, timeframe, start_date, end_date):
             f"   🔴 حد ضرر: {t['sl']:.6f}\n"
             f"   📤 خروج: {t['exit']:.6f} ({t['exit_type']})\n"
             f"   {pnl_icon} سود: ${t['pnl_usd']:+.2f}\n"
-            f"   💰 سرمایه پس از: ${t['capital_after']:.2f}\n\n"
+            f"   💰 پس از: ${t['capital_after']:.2f}\n\n"
         )
     return report
 
 
 def send_long_message(text, max_len=4096):
-    """ارسال پیام‌های طولانی به تلگرام در چند بخش"""
     while len(text) > max_len:
         part = text[:max_len]
-        last_nl = part.rfind('\n')
-        if last_nl > 0:
-            part = text[:last_nl]
-            text = text[last_nl:]
+        cut = part.rfind('\n')
+        if cut > 0:
+            part = text[:cut]
+            text = text[cut:]
         else:
             part = text[:max_len]
             text = text[max_len:]
@@ -203,57 +185,31 @@ def send_long_message(text, max_len=4096):
 
 def main():
     try:
-        # --- دریافت ورودی‌ها از متغیرهای محیطی ---
         symbol_input = os.getenv("SYMBOL", "BTC/USDT")
         timeframe = os.getenv("TIMEFRAME", "1h")
         start_date_str = os.getenv("START_DATE", "2024-05-01")
         end_date_str = os.getenv("END_DATE", "2024-06-01")
 
-        # --- پاک‌سازی نماد ---
-        symbol = symbol_input.replace("/", "").strip().upper()  # BTCUSDT
+        symbol = symbol_input.replace("/", "").upper()
         start_date = pd.to_datetime(start_date_str)
         end_date = pd.to_datetime(end_date_str)
 
-        # --- دریافت داده ---
         df = fetch_data(symbol, timeframe, start_date, end_date)
-        if df.empty:
-            error_msg = f"❌ داده‌ای برای {symbol_input} در تایم‌فریم {timeframe} یافت نشد."
-            send_telegram_message(error_msg)
+        if df.empty or len(df) < 50:
+            send_telegram_message(f"❌ داده‌ای برای {symbol_input} در {timeframe} یافت نشد.")
             return
 
-        if len(df) < 50:
-            error_msg = f"❌ داده کافی برای {symbol_input} در {timeframe} موجود نیست."
-            send_telegram_message(error_msg)
-            return
-
-        # --- اجرای بک‌تست ---
-        result = run_backtest(df, get_signal, initial_capital=1000.0, leverage=10)
-
-        # --- تولید گزارش ---
+        result = run_backtest(df, get_signal)
         report = format_report(result, symbol_input, timeframe, start_date_str, end_date_str)
-
-        # --- ارسال به تلگرام ---
         send_long_message(report)
 
-        # --- پیام خلاصه ---
-        summary = (
-            f"✅ بک‌تست {symbol_input} | "
-            f"معاملات: {result['total_trades']} | "
-            f"سود: ${result['total_pnl_usd']:+.2f}"
-        )
+        summary = f"✅ بک‌تست {symbol_input} | معاملات: {result['total_trades']} | سود: ${result['total_pnl_usd']:+.2f}"
         send_telegram_message(summary)
 
     except Exception as e:
-        error_msg = (
-            f"❌ خطا در اجرای بک‌تست:\n\n"
-            f"<b>نماد:</b> {os.getenv('SYMBOL', 'N/A')}\n"
-            f"<b>تایم‌فریم:</b> {os.getenv('TIMEFRAME', 'N/A')}\n"
-            f"<b>خطا:</b> {str(e)}\n\n"
-            f"<pre>{traceback.format_exc()}</pre>"
-        )
-        send_telegram_message(error_msg)
+        error = f"❌ خطا:\n\n{str(e)}\n\n<pre>{traceback.format_exc()}</pre>"
+        send_telegram_message(error)
 
 
-# اجرای برنامه وقتی فایل مستقیماً اجرا شود
 if __name__ == "__main__":
     main()
