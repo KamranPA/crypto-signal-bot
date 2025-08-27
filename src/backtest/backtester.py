@@ -127,3 +127,5 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
         'drawdown': round(max_drawdown, 2),
         'total_pnl_usd': round(total_pnl_usd, 2),
         'final_capital': round(current_capital, 2),
+        'trades': trades
+    }
