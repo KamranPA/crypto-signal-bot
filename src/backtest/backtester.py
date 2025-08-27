@@ -208,7 +208,7 @@ def main():
 
     except Exception as e:
         error = f"❌ خطا:\n\n{str(e)}\n\n<pre>{traceback.format_exc()}</pre>"
-        send_telegram_message(error)
+        send_telegram_message(TELEGRAM_CHAT_ID, error)
 
 
 if __name__ == "__main__":
