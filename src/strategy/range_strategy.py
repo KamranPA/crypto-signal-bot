@@ -1,55 +1,34 @@
 # src/strategy/range_strategy.py
-import ta
 
-def apply_range_strategy(df, adx_threshold=20, risk_reward_ratio=1.5):
+from ..regime_detection.range_detector import is_range_regime
+
+def apply_range_strategy(df, window=20):
     """
-    استراتژی رنج با نسبت ریسک به پاداش منطقی
+    استراتژی رنج: بازگشت به میانگین (Mean Reversion)
     """
-    if len(df) < 50:
+    if len(df) < window + 1:
         return None
 
-    # محاسبه ADX
-    adx_indicator = ta.trend.ADXIndicator(
-        high=df['high'],
-        low=df['low'],
-        close=df['close'],
-        window=14
-    )
-    adx = adx_indicator.adx()
-    adx_value = adx.iloc[-1]
+    if not is_range_regime(df):
+        return None  # فقط در رنج فعال می‌شود
 
-    # فقط اگر بازار واقعاً رنج باشد
-    if adx_value >= adx_threshold:
+    # محاسبه میانگین و انحراف معیار
+    close = df['close']
+    mean_price = close.rolling(window).mean().iloc[-1]
+    std_price = close.rolling(window).std().iloc[-1]
+
+    # فیلتر: فقط اگر قیمت در 1.5 SD از میانگین باشد
+    z_score = (close.iloc[-1] - mean_price) / std_price
+    if abs(z_score) < 1.5:
         return None
 
-    # محاسبه ATR
-    atr = ta.volatility.AverageTrueRange(
-        high=df['high'],
-        low=df['low'],
-        close=df['close'],
-        window=14
-    ).average_true_range()
+    # BUY: قیمت پایین از میانگین (زیر 1.5SD)
+    if z_score < -1.5:
+        entry = close.iloc[-1]
+        sl = close.iloc[-1] - 0.5 * std_price
+        tp = mean_price
 
-    last = df.iloc[-1]
-    lower_band = df['low'].rolling(20).min().iloc[-1]
-    upper_band = df['high'].rolling(20).max().iloc[-1]
-
-    # ✅ فاصله ورود به SL بر اساس ATR
-    max_sl_distance = 2.0 * atr.iloc[-1]  # حداکثر فاصله SL از ورود
-
-    # سیگنال خرید در پایین کانال
-    if abs(last['close'] - lower_band) / lower_band < 0.005:
-        entry = last['close']
-        sl = lower_band * 0.99
-
-        # ✅ اگر SL خیلی دور بود، آن را محدود کن
-        if (entry - sl) > max_sl_distance:
-            sl = entry - max_sl_distance
-
-        # ✅ TP = SL × نسبت R:R
-        tp = entry + (entry - sl) * risk_reward_ratio
-
-        if sl >= entry or tp <= entry or sl >= tp:
+        if sl >= entry or tp <= entry:
             return None
 
         return {
@@ -57,20 +36,17 @@ def apply_range_strategy(df, adx_threshold=20, risk_reward_ratio=1.5):
             'entry': entry,
             'stop_loss': sl,
             'take_profit': tp,
-            'regime': 'Range'
+            'regime': 'Range_Mean_Reversion',
+            'z_score': z_score
         }
 
-    # سیگنال فروش در بالای کانال
-    elif abs(last['close'] - upper_band) / upper_band < 0.005:
-        entry = last['close']
-        sl = upper_band * 1.01
+    # SELL: قیمت بالا از میانگین (بالای 1.5SD)
+    elif z_score > 1.5:
+        entry = close.iloc[-1]
+        sl = close.iloc[-1] + 0.5 * std_price
+        tp = mean_price
 
-        if (sl - entry) > max_sl_distance:
-            sl = entry + max_sl_distance
-
-        tp = entry - (sl - entry) * risk_reward_ratio
-
-        if sl <= entry or tp >= entry or sl <= tp:
+        if sl <= entry or tp >= entry:
             return None
 
         return {
@@ -78,7 +54,8 @@ def apply_range_strategy(df, adx_threshold=20, risk_reward_ratio=1.5):
             'entry': entry,
             'stop_loss': sl,
             'take_profit': tp,
-            'regime': 'Range'
+            'regime': 'Range_Mean_Reversion',
+            'z_score': z_score
         }
 
     return None
