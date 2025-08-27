@@ -2,7 +2,7 @@
 
 from regime_detection.breakout_detector import is_breakout_regime
 
-def apply_breakout_strategy(df, volume_ratio_threshold=1.8, min_body_ratio=0.6):
+
     if len(df) < 50:
         return None
 
