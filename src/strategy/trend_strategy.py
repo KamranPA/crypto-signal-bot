@@ -1,6 +1,6 @@
 # src/strategy/trend_strategy.py
 
-from ..regime_detection.range_detector import is_range_regime
+from regime_detection.range_detector import is_range_regime
 
 def apply_trend_strategy(df, adx_threshold=25, volume_ratio_threshold=1.2):
     """
@@ -16,7 +16,7 @@ def apply_trend_strategy(df, adx_threshold=25, volume_ratio_threshold=1.2):
     # --- 2. محاسبه EMA 21 ---
     ema_21 = df['close'].ewm(span=21, adjust=False).mean()
 
-    # --- 3. محاسبه ADX (بدون ta) ---
+    # --- 3. محاسبه ADX بدون ta ---
     def calculate_adx(high, low, close, window=14):
         tr1 = high - low
         tr2 = abs(high - close.shift(1))
