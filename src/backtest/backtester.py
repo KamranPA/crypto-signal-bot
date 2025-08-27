@@ -214,4 +214,52 @@ def format_report(result, symbol, timeframe, start_date, end_date):
             f"{i}. {side} | {t['regime']}\n"
             f"   📅 {t['start']} → {t['end']}\n"
             f"   💹 ورود: {t['entry']:.6f}\n"
-            f"   🟢 حد سود: {t['tp']:
+            f"   🟢 حد سود: {t['tp']:.6f}\n"
+            f"   🔴 حد ضرر: {t['sl']:.6f}\n"
+            f"   📤 خروج: {t['exit']:.6f} ({t['exit_type']})\n"
+            f"   {pnl_icon} سود: ${t['pnl_usd']:+.2f}\n"
+            f"   💰 پس از: ${t['capital_after']:.2f}\n\n"
+        )
+    return report
+
+
+def main():
+    try:
+        print("🚀 شروع بک‌تست...")
+        symbol_input = os.getenv("SYMBOL", "BTC/USDT")
+        timeframe = os.getenv("TIMEFRAME", "1h")
+        start_date_str = os.getenv("START_DATE", "2024-05-01")
+        end_date_str = os.getenv("END_DATE", "2024-06-01")
+
+        symbol = symbol_input.replace("/", "").upper()
+        start_date = pd.to_datetime(start_date_str)
+        end_date = pd.to_datetime(end_date_str)
+
+        df = fetch_data(symbol, timeframe, start_date, end_date)
+        if df.empty:
+            error_msg = f"❌ داده‌ای برای {symbol_input} در {timeframe} یافت نشد."
+            print(error_msg)
+            send_telegram_message(error_msg)
+            return
+
+        if len(df) < 50:
+            error_msg = f"❌ داده کافی برای {symbol_input} در {timeframe} موجود نیست."
+            print(error_msg)
+            send_telegram_message(error_msg)
+            return
+
+        print(f"✅ داده دریافت شد: {len(df)} کندل")
+        result = run_backtest(df, get_signal)
+        report = format_report(result, symbol_input, timeframe, start_date_str, end_date_str)
+        send_long_message(report)
+
+        summary = f"✅ بک‌تست {symbol_input} | معاملات: {result['total_trades']} | سود: ${result['total_pnl_usd']:+.2f}"
+        send_telegram_message(summary)
+
+    except Exception as e:
+        error = f"❌ خطا:\n\n{str(e)}\n\n<pre>{traceback.format_exc()}</pre>"
+        send_telegram_message(error)
+
+
+if __name__ == "__main__":
+    main()
