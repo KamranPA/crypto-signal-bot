@@ -2,10 +2,10 @@
 
 import pandas as pd
 import requests
+import time  # ✅ اضافه شد
 from datetime import datetime
 import json
 
-# 🔥 نگاشت صحیح تایم‌فریم‌ها به فرمت دقیق CoinEx
 TIMEFRAME_MAP = {
     '1m': '1min',
     '3m': '3min',
@@ -24,18 +24,15 @@ TIMEFRAME_MAP = {
 }
 
 def fetch_data(symbol, timeframe, start_date, end_date):
-    """
-    دریافت داده کندلی از صرافی CoinEx
-    """
-    print(f"🔍 Debug: دریافت داده برای {symbol}, تایم‌فریم={timeframe}, شروع={start_date}, پایان={end_date}")
+    print(f"🔍 Debug: Fetching data for {symbol}, timeframe={timeframe}, start={start_date}, end={end_date}")
 
     # 1. تبدیل نماد: BTC/USDT → BTCUSDT
     market = symbol.replace("/", "").upper()
     print(f"✅ market: {market}")
 
-    # 2. تبدیل تایم‌فریم به فرمت صحیح CoinEx
+    # 2. تبدیل تایم‌فریم به فرمت CoinEx
     if timeframe.lower() not in TIMEFRAME_MAP:
-        print(f"❌ خطای تایم‌فریم: '{timeframe}'. مجاز: {list(TIMEFRAME_MAP.keys())}")
+        print(f"❌ Error: Invalid timeframe '{timeframe}'. Supported: {list(TIMEFRAME_MAP.keys())}")
         return pd.DataFrame()
 
     interval = TIMEFRAME_MAP[timeframe.lower()]
@@ -48,7 +45,7 @@ def fetch_data(symbol, timeframe, start_date, end_date):
         print(f"✅ start_timestamp: {start_timestamp}")
         print(f"✅ end_timestamp: {end_timestamp}")
     except Exception as e:
-        print(f"❌ خطای تاریخ: {e}")
+        print(f"❌ Error: Invalid date format. {e}")
         return pd.DataFrame()
 
     # 4. URL API CoinEx
@@ -62,7 +59,7 @@ def fetch_data(symbol, timeframe, start_date, end_date):
         # محدودیت: حداکثر 30 روز در هر درخواست
         max_to = current_start + 3600 * 24 * 30  # 30 روز
         to = min(max_to, end_timestamp)
-        print(f"🔄 درخواست: از {current_start} تا {to}")
+        print(f"🔄 Request from: {current_start}, to: {to}")
 
         params = {
             'market': market,
@@ -71,22 +68,23 @@ def fetch_data(symbol, timeframe, start_date, end_date):
             'from': current_start,
             'to': to
         }
-        print(f"🔄 پارامترها: {json.dumps(params, ensure_ascii=False)}")
+        print(f"🔄 Request params: {json.dumps(params, ensure_ascii=False)}")
 
         try:
             response = requests.get(url, params=params, timeout=10)
-            print(f"✅ وضعیت پاسخ: {response.status_code}")
+            print(f"✅ Response status: {response.status_code}")
+            print(f"✅ Response headers: {response.headers}")
 
             data = response.json()
-            print(f"✅ پاسخ JSON: {json.dumps(data, ensure_ascii=False, indent=2)}")
+            print(f"✅ Response body: {json.dumps(data, ensure_ascii=False, indent=2)}")
 
             if data.get('code') != 0:
-                error_msg = data.get('message', 'خطای ناشناخته')
-                print(f"❌ خطای CoinEx: کد={data['code']}, پیام='{error_msg}'")
+                error_msg = data.get('message', 'Unknown error')
+                print(f"❌ Error from CoinEx: code={data['code']}, message='{error_msg}'")
                 return pd.DataFrame()
 
             klines = data['data']
-            print(f"✅ {len(klines)} کندل دریافت شد")
+            print(f"✅ Received {len(klines)} klines")
 
             if not klines:
                 break
@@ -99,32 +97,26 @@ def fetch_data(symbol, timeframe, start_date, end_date):
             current_start = last_timestamp + 1
 
         except Exception as e:
-            print(f"❌ خطا در ارتباط: {e}")
+            print(f"❌ Exception during request: {e}")
             return pd.DataFrame()
 
         # جلوگیری از rate limit
-        time.sleep(0.1)
+        time.sleep(0.1)  # ✅ اکنون درست است
 
     if not all_data:
-        print(f"❌ هیچ داده‌ای برای {symbol} در تایم‌فریم {timeframe} دریافت نشد.")
+        print(f"❌ No data received for {symbol} in {timeframe}")
         return pd.DataFrame()
 
     # ساخت دیتافریم
     df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'amount'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
     df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
-    df = df.astype({
-        'open': 'float64',
-        'high': 'float64',
-        'low': 'float64',
-        'close': 'float64',
-        'volume': 'float64'
-    })
+    df[['open', 'high', 'low', 'close', 'volume']] = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
     df = df.set_index('timestamp')
     df = df.sort_index()
 
     # فیلتر بر اساس بازه زمانی
     df = df.loc[start_date:end_date]
-    print(f"✅ داده نهایی: {df.shape[0]} کندل")
+    print(f"✅ Final DataFrame shape: {df.shape}")
 
     return df
