@@ -3,7 +3,6 @@
 import pandas as pd
 import requests
 from datetime import datetime
-import time
 
 # نگاشت تایم‌فریم‌ها به فرمت CoinEx
 TIMEFRAME_MAP = {
@@ -26,18 +25,9 @@ TIMEFRAME_MAP = {
 def fetch_data(symbol, timeframe, start_date, end_date):
     """
     دریافت داده کندلی از صرافی CoinEx
-    
-    ورودی:
-        symbol: مثلاً "BTC/USDT"
-        timeframe: مثلاً "1h"
-        start_date: تاریخ شروع (رشته یا datetime)
-        end_date: تاریخ پایان (رشته یا datetime)
-    
-    خروجی:
-        دیتافریم با ستون‌های: open, high, low, close, volume
     """
     # تبدیل نماد: BTC/USDT → BTCUSDT
-    market = symbol.replace("/", "")
+    market = symbol.replace("/", "").upper()
     
     # تبدیل تایم‌فریم به فرمت CoinEx
     if timeframe.lower() not in TIMEFRAME_MAP:
@@ -56,14 +46,13 @@ def fetch_data(symbol, timeframe, start_date, end_date):
     all_data = []
     current_start = start_timestamp
     
-    # دریافت داده به صورت صفحه‌بندی شده
     while current_start < end_timestamp:
         params = {
             'market': market,
             'type': interval,
             'limit': 1000,
             'from': current_start,
-            'to': min(current_start + 3600 * 24 * 30, end_timestamp)  # حداکثر 30 روز در هر درخواست
+            'to': min(current_start + 3600 * 24 * 30, end_timestamp)  # حداکثر 30 روز
         }
         
         try:
@@ -77,27 +66,25 @@ def fetch_data(symbol, timeframe, start_date, end_date):
             
             klines = data['data']
             if not klines:
-                break  # داده‌ای وجود ندارد
+                break
             
             all_data.extend(klines)
             
-            # به‌روزرسانی زمان شروع برای درخواست بعدی
             last_timestamp = klines[-1][0]
             if last_timestamp <= current_start:
-                break  # جلوگیری از حلقه بی‌نهایت
+                break
             current_start = last_timestamp + 1
         
         except Exception as e:
             print(f"❌ خطا در دریافت داده از CoinEx: {e}")
             return pd.DataFrame()
         
-        time.sleep(0.1)  # جلوگیری از محدودیت نرخ
+        time.sleep(0.1)  # جلوگیری از rate limit
     
     if not all_data:
         print(f"❌ داده‌ای برای {symbol} در تایم‌فریم {timeframe} یافت نشد.")
         return pd.DataFrame()
     
-    # ساخت دیتافریم
     df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'amount'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
     df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
@@ -105,7 +92,5 @@ def fetch_data(symbol, timeframe, start_date, end_date):
     df = df.set_index('timestamp')
     df = df.sort_index()
     
-    # فیلتر بر اساس بازه زمانی
     df = df.loc[start_date:end_date]
-    
     return df
