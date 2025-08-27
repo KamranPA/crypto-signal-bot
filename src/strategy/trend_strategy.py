@@ -41,7 +41,7 @@ def apply_trend_strategy(df, adx_threshold=25, volume_ratio_threshold=1.2):
     if adx_value >= adx_threshold and volume_ratio >= volume_ratio_threshold:
         if df['close'].iloc[-1] > ema_21.iloc[-1] and df['close'].iloc[-2] <= ema_21.iloc[-2]:
             entry = df['close'].iloc[-1]
-            sl = min(df['low'].iloc[-2], entry - 1.5 * 14))
+            sl = min(df['low'].iloc[-2], entry - 1.5 * 14)
             if sl >= entry or tp <= entry or sl >= tp:
                 return None
             return {
