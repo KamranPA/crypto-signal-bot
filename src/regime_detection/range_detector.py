@@ -1,71 +1,68 @@
+# src/regime_detection/range_detector.py
+
 import pandas as pd
 import numpy as np
 
 def is_range_regime(df, window=20, volatility_threshold=0.7, volume_threshold=0.8):
     """
-    تشخیص بازار رنج بر اساس:
-    1. کاهش ولتیلیتی نسبی (دامنه قیمت نسبت به قیمت فعلی)
-    2. کاهش حجم معاملات نسبت به میانگین
-    3. عدم وجود روند مشخص (با استفاده از ADX تقریبی بدون کتابخانه)
-
+    تشخیص بازار رنج با استفاده از:
+    - ولتیلیتی نسبی (درصدی)
+    - حجم نسبی
+    - عدم وجود روند (تقریب ADX)
+    
     ورودی:
-        df: دیتافریم با ستون‌های 'high', 'low', 'close', 'volume'
-        window: پنجره زمانی برای محاسبات (پیش‌فرض 20 دوره)
-        volatility_threshold: آستانه ولتیلیتی (مثلاً 70% از میانگین تاریخی)
-        volume_threshold: آستانه حجم (مثلاً 80% از میانگین حجم)
-
-    خروجی:
-        bool: آیا بازار در حالت رنج است؟
+        df: DataFrame با ستون‌های 'high', 'low', 'close', 'volume'
+        window: پنجره زمانی برای محاسبات
+        volatility_threshold: آستانه ولتیلیتی (مثلاً 70% از میانگین)
+        volume_threshold: آستانه حجم (مثلاً 80% از میانگین)
     """
     if len(df) < window + 1:
-        return False  # داده کافی نیست
+        return False
 
-    df = df.copy()
-    close = df['close']
-    high = df['high']
-    low = df['low']
-    volume = df['volume']
-
-    # 1. ولتیلیتی نسبی (دامنه درصدی)
-    true_range = high - low  # در داده‌های روزانه ساده، TR ≈ high - low
-    true_range_pct = true_range / close
-    avg_true_range_pct = true_range_pct.rolling(window, min_periods=1).mean()
+    # 1. ولتیلیتی نسبی (High - Low) / Close
+    true_range = df['high'] - df['low']
+    true_range_pct = true_range / df['close']
+    avg_true_range_pct = true_range_pct.rolling(window).mean()
     current_volatility_pct = true_range_pct.iloc[-1]
-    avg_volatility_pct = avg_true_range_pct.iloc[-1]
-
-    in_low_volatility = current_volatility_pct < avg_volatility_pct * volatility_threshold
+    in_low_volatility = current_volatility_pct < avg_true_range_pct.iloc[-1] * volatility_threshold
 
     # 2. حجم نسبی
-    avg_volume = volume.rolling(window, min_periods=1).mean()
-    current_volume_ratio = volume.iloc[-1] / avg_volume.iloc[-1]
-    in_low_volume = current_volume_ratio < volume_threshold
+    avg_volume = df['volume'].rolling(window).mean()
+    volume_ratio = df['volume'].iloc[-1] / avg_volume.iloc[-1]
+    in_low_volume = volume_ratio < volume_threshold
 
-    # 3. تشخیص عدم روند (تقریب ADX بدون کتابخانه)
-    # محاسبه تغییر قیمت متوسط (برای تخمین جهت‌داری)
-    price_change = np.abs(close.diff(periods=1))
-    total_change = price_change.rolling(window, min_periods=1).sum()
+    # 3. تشخیص روند (تقریب ADX)
+    high = df['high']
+    low = df['low']
+    close = df['close']
 
-    # تغییر جهتی (Directional Movement تقریبی)
-    up_move = (high - high.shift(1))
-    down_move = (low.shift(1) - low)
-    pos_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-    neg_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+    # True Range
+    tr1 = high - low
+    tr2 = abs(high - close.shift(1))
+    tr3 = abs(low - close.shift(1))
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    # میانگین متحرک ساده برای DM (با exponential smoothing ساده‌شده)
+    # Directional Movement
+    up_move = high.diff()
+    down_move = low.diff()
+    pos_dm = ((up_move > down_move) & (up_move > 0)) * up_move
+    neg_dm = ((down_move > up_move) & (down_move > 0)) * down_move
+
+    # EMA-like smoothing (Wilder's method تقریبی)
     alpha = 2 / (window + 1)
-    smoothed_pos_dm = pd.Series(pos_dm).ewm(alpha=alpha, min_periods=1).mean().iloc[-1]
-    smoothed_neg_dm = pd.Series(neg_dm).ewm(alpha=alpha, min_periods=1).mean().iloc[-1]
-    tr_smoothed = true_range.ewm(alpha=alpha, min_periods=1).mean().iloc[-1]
+    smoothed_pos_dm = pos_dm.ewm(alpha=alpha, min_periods=1).mean()
+    smoothed_neg_dm = neg_dm.ewm(alpha=alpha, min_periods=1).mean()
+    atr = tr.ewm(alpha=alpha, min_periods=1).mean()
 
-    if tr_smoothed == 0:
-        di_diff = 0
-    else:
-        di_plus = (smoothed_pos_dm / tr_smoothed) * 100
-        di_minus = (smoothed_neg_dm / tr_smoothed) * 100
-        di_diff = abs(di_plus - di_minus)
+    # DI+
+    di_plus = (smoothed_pos_dm / atr) * 100
+    di_minus = (smoothed_neg_dm / atr) * 100
 
-    # اگر تفاوت DI کم باشد، یعنی روند ضعیف است (نشانه رنج)
-    in_no_trend = di_diff < 10  # مقدار 10 یک آستانه تجربی است
+    # DX and ADX (تقریبی)
+    dx = abs(di_plus - di_minus) / (di_plus + di_minus + 1e-8) * 100
+    adx = dx.ewm(alpha=alpha, min_periods=1).mean()
 
-    # ترکیب تمام شرایط
+    in_no_trend = adx.iloc[-1] < 20  # اگر ADX < 20، روند ضعیف است
+
+    # ترکیب شرایط
     return in_low_volatility and in_low_volume and in_no_trend
