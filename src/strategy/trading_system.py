@@ -1,3 +1,8 @@
+
+from .trend_strategy import apply_trend_strategy
+from .range_strategy import apply_range_strategy
+from .breakout_strategy import apply_breakout_strategy
+
 def get_signal(df):
     print(f"📊 get_signal فراخوانی شد با {len(df)} کندل")
     
