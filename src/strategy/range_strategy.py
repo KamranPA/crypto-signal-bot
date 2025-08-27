@@ -1,5 +1,8 @@
 # src/strategy/range_strategy.py
 
+import pandas as pd
+import numpy as np
+
 from regime_detection.range_detector import is_range_regime
 
 def apply_range_strategy(df, window=20):
