@@ -1,66 +1,74 @@
 # src/strategy/trend_strategy.py
 
-def apply_trend_strategy(df, adx_threshold=20, volume_ratio_threshold=1.2):
+import pandas as pd
+from regime_detection.range_detector import is_range_regime
+
+def apply_trend_strategy(df, adx_threshold=15, volume_ratio_threshold=1.0):
+    """
+    استراتژی روند: فقط در شرایط روند قوی و با تأیید حجم
+    ✅ آستانه‌ها کاهش یافته برای تست
+    """
     if len(df) < 50:
         return None
 
-    # محاسبه ATR
-    tr1 = df['high'] - df['low']
-    tr2 = abs(df['high'] - df['close'].shift(1))
-    tr3 = abs(df['low'] - df['close'].shift(1))
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1/14, adjust=False).mean().iloc[-1]
+    # محاسبه EMA 21
+    ema_21 = df['close'].ewm(span=21, adjust=False).mean()
 
-    # محاسبه ADX
+    # محاسبه ADX بدون ta
     def calculate_adx(high, low, close, window=14):
-        # ... کد محاسبه ADX
-        pass
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    adx_value = calculate_adx(df['high'], df['low'], df['close'], 14).iloc[-1]
-    volume_ratio = df['volume'].iloc[-1] / df['volume'].rolling(20).mean().iloc[-1]
+        up_move = high.diff()
+        down_move = low.diff()
+        pos_dm = ((up_move > down_move) & (up_move > 0)) * up_move
+        neg_dm = ((down_move > up_move) & (down_move > 0)) * down_move
 
-    # تشخیص رژیم
-    in_range = is_range_regime(df)
-    strong_trend = adx_value >= 25
-    weak_trend = adx_value >= 20 and adx_value < 25
+        alpha = 2 / (window + 1)
+        smoothed_pos_dm = pos_dm.ewm(alpha=alpha, min_periods=1).mean()
+        smoothed_neg_dm = neg_dm.ewm(alpha=alpha, min_periods=1).mean()
+        atr = tr.ewm(alpha=alpha, min_periods=1).mean()
 
-    # تعیین ضریب SL و TP بر اساس رژیم
-    if strong_trend and not in_range:
-        sl_mult = 1.0
-        tp_mult = 3.0
-        regime = 'Strong Trend_Up' if df['close'].iloc[-1] > ema_21.iloc[-1] else 'Strong Trend_Down'
-    elif in_range:
-        sl_mult = 0.6
-        tp_mult = 1.8
-        regime = 'Range_Mean_Reversion'
-    elif weak_trend:
-        sl_mult = 1.4
-        tp_mult = 2.4
-        regime = 'Weak Trend'
-    else:
-        sl_mult = 1.3
-        tp_mult = 2.8
-        regime = 'Normal Trend'
+        di_plus = (smoothed_pos_dm / atr) * 100
+        di_minus = (smoothed_neg_dm / atr) * 100
+        dx = abs(di_plus - di_minus) / (di_plus + di_minus + 1e-8) * 100
+        adx = dx.ewm(alpha=alpha, min_periods=1).mean()
 
-    # بررسی سیگنال
+        return adx
+
+    adx_value = calculate_adx(df['high'], df['low'], df['close'], window=14).iloc[-1]
+    volume_avg = df['volume'].rolling(20).mean().iloc[-1]
+    volume_ratio = df['volume'].iloc[-1] / volume_avg
+
+    # --- فیلتر رنج: فقط در غیررنج فعال شود ---
+    if is_range_regime(df):
+        return None
+
+    # --- بررسی شرایط ---
     if adx_value >= adx_threshold and volume_ratio >= volume_ratio_threshold:
         if df['close'].iloc[-1] > ema_21.iloc[-1] and df['close'].iloc[-2] <= ema_21.iloc[-2]:
             entry = df['close'].iloc[-1]
-            sl = entry - sl_mult * atr
-            tp = entry + tp_mult * atr
-
-            if sl >= entry or tp <= entry or sl >= tp:
-                return None
-
+            sl = entry * 0.95
+            tp = entry * 1.05
             return {
                 'signal': 'BUY',
                 'entry': entry,
                 'stop_loss': sl,
                 'take_profit': tp,
-                'regime': regime,
-                'sl_mult': sl_mult,
-                'tp_mult': tp_mult,
-                'risk_reward': tp_mult / sl_mult
+                'regime': 'Strong Trend_Up'
             }
-        # ... فروش
+        elif df['close'].iloc[-1] < ema_21.iloc[-1] and df['close'].iloc[-2] >= ema_21.iloc[-2]:
+            entry = df['close'].iloc[-1]
+            sl = entry * 1.05
+            tp = entry * 0.95
+            return {
+                'signal': 'SELL',
+                'entry': entry,
+                'stop_loss': sl,
+                'take_profit': tp,
+                'regime': 'Strong Trend_Down'
+            }
+
     return None
