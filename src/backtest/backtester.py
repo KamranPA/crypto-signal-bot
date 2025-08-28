@@ -3,82 +3,51 @@
 import sys
 import os
 import pandas as pd
-import traceback
-from importlib import reload  # 🔥 برای بارگذاری مجدد ماژول
-
-# افزودن مسیر ریشه پروژه به sys.path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(project_root)
-
-# وارد کردن ماژول‌ها (برای اولین بار)
-import src.strategy.trend_strategy
-import src.strategy.range_strategy
-import src.strategy.breakout_strategy
-import src.strategy.trading_system
-
-# 🔁 دوباره بارگذاری ماژول‌ها — این خط حل مشکل است
-try:
-    reload(src.strategy.trend_strategy)
-    reload(src.strategy.range_strategy)
-    reload(src.strategy.breakout_strategy)
-    reload(src.strategy.trading_system)
-    print("✅ ماژول‌ها با موفقیت دوباره بارگذاری شدند")
-except Exception as e:
-    print(f"❌ خطا در بارگذاری مجدد ماژول‌ها: {e}")
-
-# حالا وارد کنیم
 from src.strategy.trading_system import get_signal
 from src.data.data_fetcher import fetch_data
-from utils.telegram_notifier import send_telegram_message, send_long_message
+from src.utils.telegram_notifier import send_long_message, send_telegram_message
 
-
-def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
-    # --- کد قبلی (بدون تغییر) ---
-    print("🔄 شروع اجرای بک‌تست...")
+def run_backtest(df, initial_capital=1000.0, leverage=10):
     trades = []
     position = None
     current_capital = initial_capital
 
     for i in range(50, len(df)):
         window = df.iloc[:i+1].copy()
-        signal_result = strategy_func(window)
-
-        if signal_result is None:
+        signal_result = get_signal(window)
+        if not signal_result:
             continue
 
-        signal = signal_result.get('signal')
         entry = signal_result.get('entry')
         sl = signal_result.get('stop_loss')
         tp = signal_result.get('take_profit')
         regime = signal_result.get('regime', 'Unknown')
 
-        if entry is None or sl is None or tp is None:
+        if any(x is None for x in [entry, sl, tp]):
             continue
-        if (signal == 'BUY' and (sl >= entry or tp <= entry)) or \
-           (signal == 'SELL' and (sl <= entry or tp >= entry)):
+        if (signal_result['signal'] == 'BUY' and (sl >= entry or tp <= entry)) or \
+           (signal_result['signal'] == 'SELL' and (sl <= entry or tp >= entry)):
             continue
 
-        if signal == 'BUY' and not position:
-            position_size = current_capital * leverage
+        if signal_result['signal'] == 'BUY' and not position:
             position = {
                 'type': 'long',
                 'entry': entry,
                 'sl': sl,
                 'tp': tp,
                 'start_time': window.index[-1],
-                'position_size': position_size,
+                'position_size': current_capital * leverage,
                 'regime': regime
             }
 
-        elif signal == 'SELL' and not position:
-            position_size = current_capital * leverage
+        elif signal_result['signal'] == 'SELL' and not position:
             position = {
                 'type': 'short',
                 'entry': entry,
                 'sl': sl,
                 'tp': tp,
                 'start_time': window.index[-1],
-                'position_size': position_size,
+                'position_size': current_capital * leverage,
                 'regime': regime
             }
 
@@ -94,8 +63,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 elif current['high'] >= position['tp']:
                     exit_price = position['tp']
                     exit_type = 'TP'
-
-            elif position['type'] == 'short':
+            else:
                 if current['high'] >= position['sl']:
                     exit_price = position['sl']
                     exit_type = 'SL'
@@ -104,12 +72,9 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                     exit_type = 'TP'
 
             if exit_price is not None:
-                if position['type'] == 'long':
-                    price_change_pct = (exit_price - position['entry']) / position['entry']
-                else:
-                    price_change_pct = (position['entry'] - exit_price) / position['entry']
-
-                pnl_usd = position['position_size'] * price_change_pct
+                pnl = (exit_price - position['entry']) / position['entry'] if position['type'] == 'long' \
+                    else (position['entry'] - exit_price) / position['entry']
+                pnl_usd = position['position_size'] * pnl
                 current_capital += pnl_usd
 
                 trades.append({
@@ -119,7 +84,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                     'exit_type': exit_type,
                     'start': position['start_time'],
                     'end': current.name,
-                    'pnl_percent': round(price_change_pct * 100, 2),
+                    'pnl_percent': round(pnl * 100, 2),
                     'pnl_usd': round(pnl_usd, 2),
                     'capital_after': round(current_capital, 2),
                     'sl': position['sl'],
@@ -128,26 +93,25 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 })
                 position = None
 
-    total_trades = len(trades)
-    winning_trades = len([t for t in trades if t['pnl_usd'] > 0])
-    win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
-
-    capital_curve = [initial_capital] + [t['capital_after'] for t in trades]
-    peak = pd.Series(capital_curve).cummax()
-    drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
-    max_drawdown = drawdown_pct.max()
+    # محاسبه آمار
+    total = len(trades)
+    wins = len([t for t in trades if t['pnl_usd'] > 0])
+    win_rate = round(wins / total * 100, 2) if total > 0 else 0
+    dd_curve = [initial_capital] + [t['capital_after'] for t in trades]
+    peak = pd.Series(dd_curve).cummax()
+    drawdown = ((peak - pd.Series(dd_curve)) / peak) * 100
+    max_dd = drawdown.max()
 
     return {
-        'total_trades': total_trades,
-        'winning_trades': winning_trades,
-        'losing_trades': total_trades - winning_trades,
+        'total_trades': total,
+        'winning_trades': wins,
+        'losing_trades': total - wins,
         'win_rate': win_rate,
-        'drawdown': round(max_drawdown, 2),
+        'drawdown': round(max_dd, 2),
         'total_pnl_usd': round(sum(t['pnl_usd'] for t in trades), 2),
         'final_capital': round(current_capital, 2),
         'trades': trades
     }
-
 
 def format_report(result, symbol, timeframe, start_date, end_date):
     r = result
@@ -174,74 +138,42 @@ def format_report(result, symbol, timeframe, start_date, end_date):
     for i, t in enumerate(r['trades'], 1):
         side = "🟢 خرید" if t['type'] == 'long' else "🔴 فروش"
         pnl_icon = "✅" if t['pnl_usd'] > 0 else "❌"
-        report += (
-            f"{i}. {side} | {t['regime']}\n"
-            f"   📅 {t['start']} → {t['end']}\n"
-            f"   💹 ورود: {t['entry']:.6f}\n"
-            f"   🟢 حد سود: {t['tp']:.6f}\n"
-            f"   🔴 حد ضرر: {t['sl']:.6f}\n"
-            f"   📤 خروج: {t['exit']:.6f} ({t['exit_type']})\n"
-            f"   {pnl_icon} سود: ${t['pnl_usd']:+.2f}\n"
-            f"   💰 پس از: ${t['capital_after']:.2f}\n\n"
-        )
+        report += (f"{i}. {side} | {t['regime']}\n"
+                   f"   📅 {t['start']} → {t['end']}\n"
+                   f"   💹 ورود: {t['entry']:.6f}\n"
+                   f"   🟢 حد سود: {t['tp']:.6f}\n"
+                   f"   🔴 حد ضرر: {t['sl']:.6f}\n"
+                   f"   📤 خروج: {t['exit']:.6f} ({t['exit_type']})\n"
+                   f"   {pnl_icon} سود: ${t['pnl_usd']:+.2f}\n"
+                   f"   💰 پس از: ${t['capital_after']:.2f}\n\n")
     return report
-
 
 def main():
     try:
-        print("🚀 شروع بک‌تست...")
-
-        symbol_input = os.getenv("SYMBOL", "BTC/USDT")
+        symbol = os.getenv("SYMBOL", "BTC/USDT")
         timeframe = os.getenv("TIMEFRAME", "1h")
-        start_date_str = os.getenv("START_DATE", "2024-05-01")
-        end_date_str = os.getenv("END_DATE", "2024-06-01")
-
-        symbol = symbol_input.replace("/", "").strip().upper()
-        start_date = pd.to_datetime(start_date_str)
-        end_date = pd.to_datetime(end_date_str)
+        start_date = os.getenv("START_DATE", "2024-05-01")
+        end_date = os.getenv("END_DATE", "2024-06-01")
 
         df = fetch_data(symbol, timeframe, start_date, end_date)
-
         if df.empty:
-            error_msg = f"❌ داده‌ای برای {symbol_input} در {timeframe} یافت نشد."
-            print(error_msg)
-            send_telegram_message(error_msg)
+            msg = f"❌ داده‌ای برای {symbol} در {timeframe} یافت نشد."
+            print(msg)
+            send_telegram_message(msg)
             return
 
-        if len(df) < 50:
-            error_msg = f"❌ داده کافی برای {symbol_input} در {timeframe} موجود نیست."
-            print(error_msg)
-            send_telegram_message(error_msg)
-            return
-
-        print(f"✅ داده دریافت شد: {len(df)} کندل")
-
-        result = run_backtest(df, get_signal, initial_capital=1000.0, leverage=10)
-        print(f"✅ بک‌تست انجام شد: {result['total_trades']} معامله")
-
-        report = format_report(result, symbol_input, timeframe, start_date_str, end_date_str)
+        result = run_backtest(df)
+        report = format_report(result, symbol, timeframe, start_date, end_date)
         send_long_message(report)
 
-        summary = (
-            f"✅ بک‌تست {symbol_input} | "
-            f"معاملات: {result['total_trades']} | "
-            f"سود: ${result['total_pnl_usd']:+.2f}"
-        )
+        summary = f"✅ بک‌تست {symbol} | معاملات: {result['total_trades']} | سود: ${result['total_pnl_usd']:+.2f}"
         send_telegram_message(summary)
-
         print("🎉 بک‌تست با موفقیت اجرا شد.")
 
     except Exception as e:
-        error_msg = (
-            f"❌ خطا در اجرای بک‌تست:\n\n"
-            f"<b>نماد:</b> {os.getenv('SYMBOL', 'N/A')}\n"
-            f"<b>تایم‌فریم:</b> {os.getenv('TIMEFRAME', 'N/A')}\n"
-            f"<b>خطا:</b> {str(e)}\n\n"
-            f"<pre>{traceback.format_exc()}</pre>"
-        )
-        print(f"❌ خطا: {e}")
+        error_msg = f"❌ خطا در اجرای بک‌تست:\n<pre>{str(e)}</pre>"
         send_telegram_message(error_msg)
-
+        print(f"❌ خطا: {e}")
 
 if __name__ == "__main__":
     main()
