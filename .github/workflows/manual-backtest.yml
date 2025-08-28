@@ -20,7 +20,7 @@ on:
       end_date:
         description: '🔹 تاریخ پایان (YYYY-MM-DD)'
         required: true
-        default: '2024-06-01'
+        default: '2024-08-21'  # ✅ تاریخ فعلی
         type: string
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: |
-          pip install ccxt pandas requests
+          pip install pandas requests
       - name: Run backtest
         env:
           SYMBOL: ${{ inputs.symbol }}
@@ -44,4 +44,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python src/backtest/backtester.py TV
+          python src/backtest/backtester.py
