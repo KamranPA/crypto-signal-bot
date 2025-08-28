@@ -26,7 +26,7 @@ def fetch_data(symbol, timeframe, start_date, end_date):
                 print(f"❌ خطا در دریافت داده: {e}")
                 break
 
-        if not all_
+        if not all_data:
             print("❌ هیچ داده‌ای دریافت نشد.")
             return pd.DataFrame()
 
