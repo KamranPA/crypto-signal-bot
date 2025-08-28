@@ -4,31 +4,17 @@ import sys
 import os
 import pandas as pd
 import traceback
-from importlib import reload  # 🔥 برای بارگذاری مجدد ماژول‌ها
 
 # افزودن مسیر ریشه پروژه به sys.path
+# __file__ = مسیر فعلی: src/backtest/backtester.py
+# دو پوشه بالاتر = ریشه پروژه
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 
-# ماژول‌های داخلی — ابتدا وارد کنیم، سپس دوباره بارگذاری کنیم
-import src.strategy.trend_strategy
-import src.strategy.range_strategy
-import src.strategy.breakout_strategy
-import src.strategy.trading_system
-
-# 🔁 دوباره بارگذاری ماژول‌ها برای اطمینان از اعمال تغییرات
-try:
-    reload(src.strategy.trend_strategy)
-    reload(src.strategy.range_strategy)
-    reload(src.strategy.breakout_strategy)
-    reload(src.strategy.trading_system)
-    print("✅ ماژول‌های استراتژی با موفقیت دوباره بارگذاری شدند")
-except Exception as e:
-    print(f"❌ خطا در بارگذاری مجدد ماژول‌ها: {e}")
-
-# حالا وارد کنیم
-from src.strategy.trading_system import get_signal
-from src.data.data_fetcher import fetch_data
+# ماژول‌های داخلی — بدون پیشوند src.
+# چون project_root به sys.path اضافه شد
+from strategy.trading_system import get_signal
+from data.data_fetcher import fetch_data
 from utils.telegram_notifier import send_telegram_message, send_long_message
 
 
@@ -45,6 +31,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
         window = df.iloc[:i+1].copy()
         signal_result = strategy_func(window)
 
+        # --- فیلتر سیگنال نامعتبر ---
         if signal_result is None:
             continue
 
@@ -54,12 +41,14 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
         tp = signal_result.get('take_profit')
         regime = signal_result.get('regime', 'Unknown')
 
+        # --- فیلتر مقادیر نامعتبر ---
         if entry is None or sl is None or tp is None:
             continue
         if (signal == 'BUY' and (sl >= entry or tp <= entry)) or \
            (signal == 'SELL' and (sl <= entry or tp >= entry)):
             continue
 
+        # --- ورود به معامله خرید ---
         if signal == 'BUY' and not position:
             position_size = current_capital * leverage
             position = {
@@ -72,6 +61,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 'regime': regime
             }
 
+        # --- ورود به معامله فروش ---
         elif signal == 'SELL' and not position:
             position_size = current_capital * leverage
             position = {
@@ -84,6 +74,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 'regime': regime
             }
 
+        # --- بررسی خروج از معامله ---
         if position:
             current = df.iloc[i]
             exit_price = None
@@ -105,15 +96,19 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                     exit_price = position['tp']
                     exit_type = 'TP'
 
+            # --- اگر خروج اتفاق افتاد ---
             if exit_price is not None:
+                # محاسبه تغییر قیمت
                 if position['type'] == 'long':
                     price_change_pct = (exit_price - position['entry']) / position['entry']
                 else:
                     price_change_pct = (position['entry'] - exit_price) / position['entry']
 
+                # محاسبه سود/ضرر
                 pnl_usd = position['position_size'] * price_change_pct
                 current_capital += pnl_usd
 
+                # ذخیره معامله
                 trades.append({
                     'type': position['type'],
                     'entry': position['entry'],
@@ -130,15 +125,18 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
                 })
                 position = None
 
+    # --- محاسبه آمار نهایی ---
     total_trades = len(trades)
     winning_trades = len([t for t in trades if t['pnl_usd'] > 0])
     win_rate = round(winning_trades / total_trades * 100, 2) if total_trades > 0 else 0
 
+    # محاسبه ضرر حداکثر (Max Drawdown)
     capital_curve = [initial_capital] + [t['capital_after'] for t in trades]
     peak = pd.Series(capital_curve).cummax()
     drawdown_pct = ((peak - pd.Series(capital_curve)) / peak) * 100
     max_drawdown = drawdown_pct.max()
 
+    # --- بازگشت نتیجه ---
     return {
         'total_trades': total_trades,
         'winning_trades': winning_trades,
@@ -152,6 +150,7 @@ def run_backtest(df, strategy_func, initial_capital=1000.0, leverage=10):
 
 
 def format_report(result, symbol, timeframe, start_date, end_date):
+    """تولید گزارش زیبا برای ارسال به تلگرام"""
     r = result
     report = f"""
 🚀 بک‌تست انجام شد!
