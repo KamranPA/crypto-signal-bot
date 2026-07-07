@@ -1,4 +1,13 @@
-ccxt
-pandas
-ta
-requests
+# مسیر فایل: requirements.txt
+pandas>=2.0.0
+numpy>=1.24.0
+ccxt>=4.3.0
+yfinance>=0.2.40
+lightgbm>=4.3.0
+scikit-learn>=1.4.0
+optuna>=3.6.0
+plotly>=5.20.0
+python-telegram-bot>=21.0
+supabase>=2.5.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
