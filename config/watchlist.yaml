@@ -1,0 +1,35 @@
+# مسیر فایل: config/watchlist.yaml
+coins:
+  - name: BTC
+    coinex_symbol: "BTC/USDT"
+    yahoo_symbol: "BTC-USD"
+  - name: ETH
+    coinex_symbol: "ETH/USDT"
+    yahoo_symbol: "ETH-USD"
+  - name: SOL
+    coinex_symbol: "SOL/USDT"
+    yahoo_symbol: "SOL-USD"
+  - name: BNB
+    coinex_symbol: "BNB/USDT"
+    yahoo_symbol: "BNB-USD"
+  - name: XRP
+    coinex_symbol: "XRP/USDT"
+    yahoo_symbol: "XRP-USD"
+  - name: ADA
+    coinex_symbol: "ADA/USDT"
+    yahoo_symbol: "ADA-USD"
+  - name: DOGE
+    coinex_symbol: "DOGE/USDT"
+    yahoo_symbol: "DOGE-USD"
+  - name: AVAX
+    coinex_symbol: "AVAX/USDT"
+    yahoo_symbol: "AVAX-USD"
+  - name: LINK
+    coinex_symbol: "LINK/USDT"
+    yahoo_symbol: "LINK-USD"
+  - name: TON
+    coinex_symbol: "TON/USDT"
+    yahoo_symbol: "TON-USD"
+
+timeframe: "1h"
+backtest_years: 2
