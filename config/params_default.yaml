@@ -1,0 +1,36 @@
+# مسیر فایل: config/params_default.yaml
+indicator:
+  sensitivity: 2.4
+  st_tuner: 10
+  ms_tuner: 8
+  ema_fast: 150
+  ema_slow: 250
+  donchian_len: 30
+  adx_len: 14
+  hma_len: 55
+  volume_fast: 15
+  volume_slow: 20
+  volume_norm: 25
+
+risk_defaults:
+  atr_len: 14
+  atr_mult: 2.2
+  tp1_r: 1.0
+  tp2_r: 2.0
+  tp3_r: 3.0
+  search_space:
+    atr_mult: [1.2, 3.5]
+    tp1_r: [0.5, 2.0]
+    tp2_r: [1.5, 3.5]
+    tp3_r: [2.5, 5.0]
+
+ml_defaults:
+  confidence_threshold: 0.55
+  search_space:
+    confidence_threshold: [0.45, 0.85]
+
+blending_schedule_months:
+  - {month: 1,  backtest_weight: 0.9, live_weight: 0.1}
+  - {month: 3,  backtest_weight: 0.7, live_weight: 0.3}
+  - {month: 6,  backtest_weight: 0.5, live_weight: 0.5}
+  - {month: 12, backtest_weight: 0.3, live_weight: 0.7}
