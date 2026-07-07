@@ -1,3 +1,25 @@
+name: Telegram Integration Test
+
+on:
+  workflow_dispatch: # این گزینه به شما اجازه می‌دهد تست را به صورت دستی از تب Actions اجرا کنید
+
+jobs:
+  test-telegram:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
       - name: Execute Telegram Test
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
