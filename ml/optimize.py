@@ -20,22 +20,25 @@ def confidence_factor(n_trades: int, min_reliable: int = 8) -> float:
     return 1 - math.exp(-n_trades / min_reliable)
 
 
+# مسیر فایل: ml/optimize.py
 def compute_adjusted_score(report: BacktestReport, months_covered: float) -> float:
-    if report.n_trades == 0 or months_covered <= 0:
+    closed = report.closed_trades  # open_at_end از محاسبه حذف می‌شود (نتیجه‌ی واقعی نامعلوم است)
+    n_closed = len(closed)
+    if n_closed == 0 or months_covered <= 0:
         return -math.inf
 
-    wins = [t for t in report.trades if t.outcome != "sl"]
-    losses = [t for t in report.trades if t.outcome == "sl"]
-    win_rate = len(wins) / report.n_trades
-    loss_rate = len(losses) / report.n_trades
+    wins = [t for t in closed if t.outcome != "sl"]
+    losses = [t for t in closed if t.outcome == "sl"]
+    win_rate = len(wins) / n_closed
+    loss_rate = len(losses) / n_closed
     avg_win = sum(t.pnl_pct for t in wins) / len(wins) if wins else 0.0
     avg_loss = -sum(t.pnl_pct for t in losses) / len(losses) if losses else 0.0
 
     expectancy = (win_rate * avg_win) - (loss_rate * avg_loss)
-    trades_per_month = report.n_trades / months_covered
+    trades_per_month = n_closed / months_covered
     monthly_score = trades_per_month * expectancy
 
-    return monthly_score * confidence_factor(report.n_trades)
+    return monthly_score * confidence_factor(n_closed)
 
 
 def get_blending_weights(months_since_start: int, schedule: list[dict]) -> tuple[float, float]:
