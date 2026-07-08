@@ -37,6 +37,12 @@ ml_defaults:
   search_space:
     confidence_threshold: [0.45, 0.85]
 
+# هزینه‌ی واقعی معامله — قبلاً در بک‌تست لحاظ نمی‌شد (باگ رفع‌شده).
+# مقادیر نمونه بر اساس کارمزد Taker متداول صرافی‌ها؛ قبل از استفاده‌ی واقعی با نرخ CoinEx خودتان تنظیم کنید.
+execution:
+  fee_pct_per_side: 0.10       # درصد کارمزد هر طرف معامله (ورود یا خروج)
+  slippage_pct_per_side: 0.05  # برآورد اسلیپیج هر طرف
+
 # وزن‌دهی بک‌تست/زنده در حلقه‌ی یادگیری (بخش ۵.۲ architecture.md)
 blending_schedule_months:
   - {month: 1,  backtest_weight: 0.9, live_weight: 0.1}
