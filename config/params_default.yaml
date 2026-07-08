@@ -1,8 +1,11 @@
 # مسیر فایل: config/params_default.yaml
+# مقادیر پیش‌فرض / baseline — دقیقاً مطابق کد اصلی Pine Script
+# این مقادیر فاز ۱ (منطق هسته اندیکاتور) هستند و در بهینه‌سازی فاز ۱ ثابت می‌مانند.
+
 indicator:
-  sensitivity: 2.4
-  st_tuner: 10
-  ms_tuner: 8
+  sensitivity: 2.4        # ضریب Supertrend
+  st_tuner: 10             # طول ATR برای Supertrend
+  ms_tuner: 8               # طول Wavetrend / Reversal Dot
   ema_fast: 150
   ema_slow: 250
   donchian_len: 30
@@ -11,13 +14,18 @@ indicator:
   volume_fast: 15
   volume_slow: 20
   volume_norm: 25
+  # فیلتر پیش‌فرض کد اصلی: filterstyle == "Trending Signals [Mode]" → adx > adx_threshold
+  # این تنها فیلتر فعال روی سیگنال خام bull/bear در حالت پیش‌فرض Presets == "All Signals" است.
+  adx_threshold: 20
 
+# مقادیر پیش‌فرض پارامترهای ریسک — نقطه‌ی شروع بهینه‌سازی Optuna (نه مقدار ثابت نهایی)
 risk_defaults:
   atr_len: 14
   atr_mult: 2.2
   tp1_r: 1.0
   tp2_r: 2.0
   tp3_r: 3.0
+  # بازه‌ی جستجوی Optuna حول این مقادیر (فاز ۱)
   search_space:
     atr_mult: [1.2, 3.5]
     tp1_r: [0.5, 2.0]
@@ -25,10 +33,11 @@ risk_defaults:
     tp3_r: [2.5, 5.0]
 
 ml_defaults:
-  confidence_threshold: 0.55
+  confidence_threshold: 0.55   # نقطه‌ی شروع، هر ماه بازبینی می‌شود
   search_space:
     confidence_threshold: [0.45, 0.85]
 
+# وزن‌دهی بک‌تست/زنده در حلقه‌ی یادگیری (بخش ۵.۲ architecture.md)
 blending_schedule_months:
   - {month: 1,  backtest_weight: 0.9, live_weight: 0.1}
   - {month: 3,  backtest_weight: 0.7, live_weight: 0.3}
