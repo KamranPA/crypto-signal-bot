@@ -1,0 +1,51 @@
+# مسیر فایل: .github/workflows/backtest_on_demand.yml
+name: Backtest (On Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'یک ارز خاص (خالی = کل واچ‌لیست)'
+        required: false
+        default: ''
+      coinex_only:
+        description: 'فقط CoinEx (بدون Yahoo، سریع‌تر)'
+        type: boolean
+        default: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run backtest
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.symbol }}" ]; then
+            ARGS="$ARGS --symbol ${{ github.event.inputs.symbol }}"
+          fi
+          if [ "${{ github.event.inputs.coinex_only }}" = "true" ]; then
+            ARGS="$ARGS --coinex-only"
+          fi
+          python -m jobs.backtest_only $ARGS
+
+      - name: Commit reports
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports/
+          git diff --cached --quiet || git commit -m "chore: on-demand backtest $(date -u +'%Y-%m-%d %H:%M')"
+          git push
