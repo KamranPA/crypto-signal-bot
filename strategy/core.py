@@ -3,7 +3,7 @@
 منطق مشترک تولید سیگنال + محاسبه‌ی TP/SL.
 این ماژول تنها جایی است که قانون "کی وارد معامله شویم و کجا خارج شویم" تعریف می‌شود.
 هم backtest/engine.py و هم jobs/hourly_signal.py دقیقاً همین تابع را import می‌کنند
-تا رفتار بک‌تست و لایو صد در صد یکسان باشد.
+تا رفتار بک‌تست و لایو صد در صد یکسان باشد (مطابق architecture.md بخش ۳).
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -26,40 +26,46 @@ class Signal:
 
 def generate_raw_signals(df: pd.DataFrame, params: dict) -> pd.DataFrame:
     """
-    معادل دقیق منطق bull/bear در کد اصلی Pine Script:
-      bull = crossover(close, supertrend) and macd>0 and macd>macd[1]
-             and ema_fast>ema_slow and hma>hma[2] and donchian_trend>0
-      bear = شرط متقارن
+    معادل دقیق منطق bull/bear در کد اصلی Pine Script.
+
+    نکته‌ی مهم: در کد اصلی، `Presets` هاردکد است روی "All Signals" (ورودی کاربرش
+    کامنت شده). با این مقدار، فرمول واقعی bull/bear به این شکل ساده می‌شود:
+
+        bull = crossover(close, supertrend)
+               and (StrongSignalsOnly ? close>StrongFilter : true)   -> پیش‌فرض false → true
+               and (ContrarianOnly    ? ContBull            : true)   -> پیش‌فرض false → true
+               and (consSignalsFilter ? adx>20               : true)  -> پیش‌فرض true (چون
+                                                                          filterstyle پیش‌فرض
+                                                                          "Trending Signals [Mode]")
+               and (highVolSignals    ? volFilter            : true)  -> پیش‌فرض false → true
+               and (signalsTrendCloud ? ...                  : true)  -> پیش‌فرض false → true
+
+    یعنی سیگنال پیش‌فرض واقعی فقط «Supertrend crossover + ADX > adx_threshold» است.
+    شرایط MACD/EMA150-250/HMA rising/Donchian (که در نسخه‌ی قبلی این تابع اشتباهاً
+    اینجا اعمال شده بودند) در کد اصلی متعلق به confBull/confBear هستند — متغیرهایی
+    که فقط برای preset دیگری به‌نام "Strong+" استفاده می‌شوند و در این پیکربندی
+    (Presets == "All Signals" ثابت) هرگز در مسیر اجرا قرار نمی‌گیرند.
     """
     d = compute_all_indicators(df, params)
+    adx_threshold = params["indicator"]["adx_threshold"]
 
     cross_over = (d["close"].shift(1) <= d["supertrend"].shift(1)) & (d["close"] > d["supertrend"])
     cross_under = (d["close"].shift(1) >= d["supertrend"].shift(1)) & (d["close"] < d["supertrend"])
 
-    macd_rising = d["macd"] > d["macd"].shift(1)
-    macd_falling = d["macd"] < d["macd"].shift(1)
-    hma_rising = d["hma"] > d["hma"].shift(2)
-    hma_falling = d["hma"] < d["hma"].shift(2)
+    cons_filter = d["adx"] > adx_threshold
 
-    d["bull"] = (
-        cross_over
-        & (d["macd"] > 0) & macd_rising
-        & (d["ema_fast"] > d["ema_slow"])
-        & hma_rising
-        & (d["donchian_trend"] > 0)
-    )
-    d["bear"] = (
-        cross_under
-        & (d["macd"] < 0) & macd_falling
-        & (d["ema_fast"] < d["ema_slow"])
-        & hma_falling
-        & (d["donchian_trend"] < 0)
-    )
+    d["bull"] = cross_over & cons_filter
+    d["bear"] = cross_under & cons_filter
     return d
 
 
 def compute_tp_sl(entry: float, direction: str, atr_value: float, risk_params: dict) -> dict:
-    """معادل منطق atrStop / tp1_y / tp2_y / tp3_y در کد اصلی."""
+    """
+    معادل منطق atrStop / tp1_y / tp2_y / tp3_y در کد اصلی.
+    risk_params شامل: atr_mult, tp1_r, tp2_r, tp3_r
+    (این پارامترها هم می‌توانند baseline باشند هم خروجی بهینه‌سازی Optuna برای آن ارز خاص —
+    ml/optimize.py مقدار per-coin را در param_history ذخیره و اینجا فقط مصرف می‌شود.)
+    """
     atr_band = atr_value * risk_params["atr_mult"]
     if direction == "bull":
         stop_loss = entry - atr_band
