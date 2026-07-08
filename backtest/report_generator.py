@@ -17,8 +17,9 @@ def generate_html_report(report: BacktestReport, out_dir: Path = REPORTS_DIR) ->
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     path = out_dir / f"backtest_{report.symbol}_{date_str}.html"
 
-    equity = (1 + pd.Series([t.pnl_pct for t in report.trades]) / 100).cumprod()
-    times = [t.exit_time for t in report.trades]
+    closed = report.closed_trades  # فقط معاملات بسته‌شده (TP/SL) — open_at_end حذف شده
+    equity = (1 + pd.Series([t.pnl_pct for t in closed]) / 100).cumprod()
+    times = [t.exit_time for t in closed]
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                          subplot_titles=(f"{report.symbol} — Equity Curve", "PnL هر معامله (%)"),
@@ -26,8 +27,8 @@ def generate_html_report(report: BacktestReport, out_dir: Path = REPORTS_DIR) ->
 
     fig.add_trace(go.Scatter(x=times, y=equity, mode="lines", name="Equity"), row=1, col=1)
 
-    colors = ["#00dbff" if t.pnl_pct >= 0 else "#b2b5be" for t in report.trades]
-    fig.add_trace(go.Bar(x=times, y=[t.pnl_pct for t in report.trades], marker_color=colors,
+    colors = ["#00dbff" if t.pnl_pct >= 0 else "#b2b5be" for t in closed]
+    fig.add_trace(go.Bar(x=times, y=[t.pnl_pct for t in closed], marker_color=colors,
                           name="PnL %"), row=2, col=1)
 
     fig.update_layout(
@@ -36,7 +37,7 @@ def generate_html_report(report: BacktestReport, out_dir: Path = REPORTS_DIR) ->
         height=700,
         annotations=[
             dict(text=(
-                f"تعداد معاملات: {report.n_trades} | "
+                f"تعداد معاملات بسته‌شده: {len(closed)} (+{report.n_open_at_end} بدون نتیجه تا پایان دیتا) | "
                 f"Win Rate: {report.win_rate:.1%} | "
                 f"Profit Factor: {report.profit_factor:.2f} | "
                 f"میانگین سود هر معامله: {report.avg_pnl_pct:.2f}% | "
@@ -57,12 +58,16 @@ def generate_summary_md(reports: list[BacktestReport], out_dir: Path = REPORTS_D
         "",
         f"تاریخ تولید: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         "",
-        "| ارز | تعداد معاملات | Win Rate | Profit Factor | میانگین PnL % | Max Drawdown % |",
-        "|---|---|---|---|---|---|",
+        "> Win Rate / Profit Factor / PnL / Max Drawdown فقط بر اساس معاملات **بسته‌شده** "
+        "(رسیده به TP یا SL) محاسبه شده‌اند. ستون «بدون نتیجه» تعداد معاملاتی است که تا پایان "
+        "دیتا نه TP نه SL خورده‌اند و در این آمار لحاظ نشده‌اند.",
+        "",
+        "| ارز | معاملات بسته‌شده | بدون نتیجه | Win Rate | Profit Factor | میانگین PnL % | Max Drawdown % |",
+        "|---|---|---|---|---|---|---|",
     ]
     for r in reports:
         lines.append(
-            f"| {r.symbol} | {r.n_trades} | {r.win_rate:.1%} | "
+            f"| {r.symbol} | {len(r.closed_trades)} | {r.n_open_at_end} | {r.win_rate:.1%} | "
             f"{r.profit_factor:.2f} | {r.avg_pnl_pct:.2f}% | {r.max_drawdown_pct:.2f}% |"
         )
     path.write_text("\n".join(lines), encoding="utf-8")
