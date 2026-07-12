@@ -49,15 +49,34 @@ def generate_html_report(report: BacktestReport, out_dir: Path = REPORTS_DIR) ->
     return path
 
 
-def generate_summary_md(reports: list[BacktestReport], out_dir: Path = REPORTS_DIR) -> Path:
+def generate_summary_md(reports: list[BacktestReport], out_dir: Path = REPORTS_DIR,
+                         skipped: list[str] | None = None, degraded: list[str] | None = None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "summary.md"
+    skipped = skipped or []
+    degraded = degraded or []
 
     lines = [
         "# خلاصه‌ی بک‌تست واچ‌لیست",
         "",
         f"تاریخ تولید: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         "",
+    ]
+
+    if skipped:
+        lines += [
+            f"⚠️ **این ارزها کاملاً fail شدند و در جدول زیر نیستند:** {', '.join(skipped)}  ",
+            "(علت را در لاگ اجرای GitHub Actions همان run ببینید — معمولاً خطای دریافت دیتا)",
+            "",
+        ]
+    if degraded:
+        lines += [
+            f"ℹ️ **این ارزها فقط با دیتای CoinEx (بدون Yahoo، تاریخچه‌ی کوتاه‌تر) بک‌تست شدند:** "
+            f"{', '.join(degraded)}",
+            "",
+        ]
+
+    lines += [
         "> Win Rate / Profit Factor / PnL / Max Drawdown فقط بر اساس معاملات **بسته‌شده** "
         "(رسیده به TP یا SL) محاسبه شده‌اند. ستون «بدون نتیجه» تعداد معاملاتی است که تا پایان "
         "دیتا نه TP نه SL خورده‌اند و در این آمار لحاظ نشده‌اند.",
