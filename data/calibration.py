@@ -1,7 +1,10 @@
 # مسیر فایل: data/calibration.py
 """
 هماهنگ‌سازی دیتای Yahoo Finance (بک‌تست بلندمدت) با CoinEx (منبع حقیقت برای Live).
-قاعده‌ی طلایی: مدل نهایی Live فقط با CoinEx train/fine-tune می‌شود.
+مطابق architecture.md بخش ۲.۲.
+
+قاعده‌ی طلایی: مدل نهایی Live فقط با CoinEx train/fine-tune می‌شود. این ماژول صرفاً
+دیتای Yahoo را برای اعتبارسنجی کلی منطق استراتژی روی بازه‌ی بلندمدت‌تر قابل‌استفاده می‌کند.
 """
 from __future__ import annotations
 import pandas as pd
@@ -15,10 +18,13 @@ def find_overlap(df_yahoo: pd.DataFrame, df_coinex: pd.DataFrame) -> tuple[pd.Ti
 
 
 def compute_calibration_ratio(df_yahoo: pd.DataFrame, df_coinex: pd.DataFrame) -> float:
-    """میانگین نسبت close-to-close بین دو منبع در بازه‌ی هم‌پوشان."""
+    """
+    میانگین نسبت close-to-close بین دو منبع در بازه‌ی هم‌پوشان.
+    ratio > 1 یعنی CoinEx به‌طور میانگین بالاتر از Yahoo قیمت می‌دهد (و برعکس).
+    """
     start, end = find_overlap(df_yahoo, df_coinex)
     if start >= end:
-        return 1.0
+        return 1.0  # هیچ هم‌پوشانی‌ای نیست؛ بدون تعدیل
 
     y = df_yahoo.loc[start:end, "close"].resample("1h").ffill()
     c = df_coinex.loc[start:end, "close"].resample("1h").ffill()
@@ -28,10 +34,11 @@ def compute_calibration_ratio(df_yahoo: pd.DataFrame, df_coinex: pd.DataFrame) -
         return 1.0
 
     ratios = aligned["coinex"] / aligned["yahoo"]
-    return float(ratios.median())
+    return float(ratios.median())  # median به‌جای mean برای مقاومت در برابر outlier
 
 
 def calibrate_yahoo_to_coinex(df_yahoo: pd.DataFrame, ratio: float) -> pd.DataFrame:
+    """اعمال ضریب تعدیل روی ستون‌های قیمتی (نه volume)."""
     out = df_yahoo.copy()
     for col in ["open", "high", "low", "close"]:
         out[col] = out[col] * ratio
@@ -39,7 +46,31 @@ def calibrate_yahoo_to_coinex(df_yahoo: pd.DataFrame, ratio: float) -> pd.DataFr
 
 
 def build_calibrated_history(df_yahoo: pd.DataFrame, df_coinex: pd.DataFrame) -> pd.DataFrame:
-    """بخش قدیمی از Yahoo (کالیبره‌شده) + بخش اخیر از CoinEx (خام)."""
+    """
+    خروجی نهایی برای بک‌تست: بخش قدیمی از Yahoo (کالیبره‌شده) + بخش اخیر از CoinEx (خام).
+    ستون 'source' برای شفافیت در گزارش بک‌تست حفظ می‌شود.
+
+    مقاوم در برابر خالی بودن یکی از دو منبع (مثلاً وقتی Yahoo روی سرورهای GitHub Actions
+    به‌طور موقت Rate-Limit می‌شود و دیتافریم خالی برمی‌گرداند). قبلاً این حالت باعث خطای
+    NaT در محاسبه‌ی overlap می‌شد و کل ارز بی‌سروصدا از گزارش حذف می‌شد — رفع شد.
+    """
+    if df_yahoo.empty and df_coinex.empty:
+        raise ValueError("هر دو منبع دیتا (Yahoo و CoinEx) خالی برگشتند — بررسی اتصال/نماد لازم است.")
+
+    if df_yahoo.empty:
+        # فقط CoinEx در دسترس است؛ بدون کالیبراسیون (تاریخچه کوتاه‌تر ولی معتبر) ادامه می‌دهیم.
+        combined = df_coinex.copy()
+        combined.attrs["calibration_ratio"] = None
+        combined.attrs["yahoo_missing"] = True
+        return combined
+
+    if df_coinex.empty:
+        # فقط Yahoo در دسترس است (بدون کالیبراسیون، چون منبع حقیقت Live نداریم).
+        combined = df_yahoo.copy()
+        combined.attrs["calibration_ratio"] = None
+        combined.attrs["coinex_missing"] = True
+        return combined
+
     ratio = compute_calibration_ratio(df_yahoo, df_coinex)
     _, overlap_end = find_overlap(df_yahoo, df_coinex)
 
