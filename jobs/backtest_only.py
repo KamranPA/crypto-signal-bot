@@ -14,6 +14,7 @@
 from __future__ import annotations
 import argparse
 import logging
+import time
 import yaml
 from pathlib import Path
 
@@ -51,9 +52,26 @@ def get_risk_params(symbol: str, params_default: dict) -> dict:
     return params_default["risk_defaults"]
 
 
+def fetch_yahoo_with_retry(yahoo_symbol: str, period: str, retries: int = 3, delay_sec: float = 3.0):
+    """
+    Yahoo Finance روی IPهای مشترک (مثل GitHub Actions runner) گاهی موقتاً Rate-Limit
+    می‌کند و دیتافریم خالی برمی‌گرداند. چند بار با فاصله تلاش می‌کنیم قبل از تسلیم شدن.
+    """
+    for attempt in range(1, retries + 1):
+        df = yahoo_fetch(yahoo_symbol, period=period, interval="1h")
+        if not df.empty:
+            return df
+        log.warning(f"Yahoo برای {yahoo_symbol} خالی برگشت (تلاش {attempt}/{retries})")
+        if attempt < retries:
+            time.sleep(delay_sec)
+    return df  # دیتافریم خالی — تابع فراخوان باید مدیریتش کند
+
+
 def run(symbol_filter: str | None = None, coinex_only: bool = False):
     watchlist, params_default = load_config()
     reports = []
+    skipped: list[str] = []       # ارزهایی که کامل fail شدند (هیچ گزارشی ندارند)
+    degraded: list[str] = []      # ارزهایی که فقط با CoinEx (بدون Yahoo) بک‌تست شدند
 
     for coin in watchlist["coins"]:
         symbol_name = coin["name"]
@@ -67,9 +85,17 @@ def run(symbol_filter: str | None = None, coinex_only: bool = False):
             if coinex_only:
                 df = df_coinex
             else:
-                df_yahoo = yahoo_fetch(coin["yahoo_symbol"],
-                                        period=f"{watchlist['backtest_years']*365}d", interval="1h")
+                df_yahoo = fetch_yahoo_with_retry(
+                    coin["yahoo_symbol"], period=f"{watchlist['backtest_years']*365}d"
+                )
+                if df_yahoo.empty:
+                    log.warning(f"{symbol_name}: Yahoo بعد از چند تلاش خالی ماند — "
+                                f"فقط با تاریخچه‌ی کوتاه‌تر CoinEx ادامه می‌دهیم.")
+                    degraded.append(symbol_name)
                 df = build_calibrated_history(df_yahoo, df_coinex)
+
+            if df.empty:
+                raise ValueError("هیچ دیتایی از هیچ منبعی دریافت نشد.")
 
             risk_params = get_risk_params(symbol_name, params_default)
             report = run_backtest(df, symbol_name, params_default, risk_params)
@@ -82,11 +108,20 @@ def run(symbol_filter: str | None = None, coinex_only: bool = False):
 
         except Exception as e:
             log.exception(f"خطا در بک‌تست {symbol_name}: {e}")
+            skipped.append(symbol_name)
             continue
 
     if reports:
-        summary_path = generate_summary_md(reports)
+        summary_path = generate_summary_md(reports, skipped=skipped, degraded=degraded)
         log.info(f"خلاصه‌ی کل واچ‌لیست: {summary_path}")
+
+    # شفافیت کامل: هیچ ارزی نباید بی‌سروصدا از گزارش غایب باشد
+    if degraded:
+        log.warning(f"ارزهای بدون Yahoo (فقط CoinEx، تاریخچه‌ی کوتاه‌تر): {', '.join(degraded)}")
+    if skipped:
+        log.error(f"ارزهایی که کاملاً fail شدند و در گزارش نیستند: {', '.join(skipped)}")
+    else:
+        log.info("همه‌ی ارزهای واچ‌لیست با موفقیت پردازش شدند.")
 
 
 if __name__ == "__main__":
