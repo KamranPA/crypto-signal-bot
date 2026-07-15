@@ -27,9 +27,6 @@ coins:
   - name: LINK
     coinex_symbol: "LINK/USDT"
     yahoo_symbol: "LINK-USD"
-  - name: TON
-    coinex_symbol: "TON/USDT"
-    yahoo_symbol: "TON-USD"
 
 timeframe: "1h"
 backtest_years: 2
