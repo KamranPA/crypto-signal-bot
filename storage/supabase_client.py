@@ -1,5 +1,5 @@
 # مسیر فایل: storage/supabase_client.py
-"""لایه‌ی ارتباط با Supabase."""
+"""لایه‌ی ارتباط با Supabase — مطابق طرح جداول در architecture.md بخش ۹."""
 from __future__ import annotations
 import os
 from datetime import datetime, timezone
@@ -10,7 +10,17 @@ from strategy.core import Signal
 
 
 def get_client() -> Client:
-    return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+    url = os.environ["SUPABASE_URL"].strip()
+    key = os.environ["SUPABASE_KEY"].strip()
+
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise ValueError(
+            f"SUPABASE_URL باید با https:// شروع شود، مقدار فعلی این‌طور نیست: {url!r} "
+            "(نمونه‌ی صحیح: https://xxxxxxxxxxxxx.supabase.co — از Project Settings > API > Project URL)"
+        )
+    url = url.rstrip("/")  # اسلش اضافه در انتها هم گاهی باعث خطای Invalid URL می‌شود
+
+    return create_client(url, key)
 
 
 def cache_ohlcv(client: Client, symbol: str, timeframe: str, df: pd.DataFrame):
