@@ -1,0 +1,52 @@
+# مسیر فایل: .github/workflows/diagnose_on_demand.yml
+name: Diagnose (On Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'یک ارز خاص (خالی = کل واچ‌لیست)'
+        required: false
+        default: ''
+      test_telegram:
+        description: 'ارسال پیام تست به تلگرام'
+        type: boolean
+        default: false
+      history:
+        description: 'نمایش آخرین سیگنال واقعی هر ارز در ۵۰۰ کندل اخیر'
+        type: boolean
+        default: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run diagnostics
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.symbol }}" ]; then
+            ARGS="$ARGS --symbol ${{ github.event.inputs.symbol }}"
+          fi
+          if [ "${{ github.event.inputs.test_telegram }}" = "true" ]; then
+            ARGS="$ARGS --test-telegram"
+          fi
+          if [ "${{ github.event.inputs.history }}" = "true" ]; then
+            ARGS="$ARGS --history"
+          fi
+          python -m jobs.diagnose $ARGS
