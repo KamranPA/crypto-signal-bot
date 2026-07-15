@@ -1,6 +1,18 @@
 # مسیر فایل: jobs/hourly_signal.py
 """
 اسکریپت اجرای ساعتی — توسط .github/workflows/hourly_signal.yml اجرا می‌شود.
+
+مراحل:
+  ۱. برای هر ارز واچ‌لیست: دریافت کندل‌های اخیر از CoinEx
+  ۲. محاسبه‌ی اندیکاتورها + تولید سیگنال rule-based (strategy/core.py)
+  ۳. اگر سیگنال جدید بود: فیلتر ML (ml/predict.py) با آستانه‌ی فعال آن ارز
+  ۴. در صورت تأیید: ارسال تلگرام + ذخیره در Supabase
+  ۵. بررسی معاملات pending قبلی: آیا TP/SL لمس شده؟ (به‌روزرسانی وضعیت)
+
+نکته‌ی مهم (اصلاح‌شده): ارسال تلگرام هرگز نباید به موفقیت Supabase وابسته باشد.
+هر تعامل با Supabase جداگانه در try/except محافظت شده — اگر Supabase به هر دلیلی
+(کلید نامعتبر، قطعی سرویس) fail شود، فقط warning چاپ می‌شود و مسیر اصلی
+(سیگنال → تلگرام) ادامه پیدا می‌کند.
 """
 from __future__ import annotations
 import logging
@@ -28,6 +40,7 @@ def load_config():
 
 
 def check_pending_outcomes(client, symbol: str, df_with_indicators):
+    """بررسی می‌کند آیا معاملات pending این ارز به TP/SL رسیده‌اند (برای حلقه‌ی یادگیری)."""
     pending = get_pending_signals(client, symbol)
     last_row = df_with_indicators.iloc[-1]
     for p in pending:
@@ -48,9 +61,45 @@ def check_pending_outcomes(client, symbol: str, df_with_indicators):
                 update_signal_status(client, p["id"], "tp3_hit", pnl)
 
 
+def safe_cache_ohlcv(client, symbol_name, timeframe, df_tail):
+    """ذخیره در Supabase — اگر fail شود فقط warning می‌دهد، جریان اصلی متوقف نمی‌شود."""
+    try:
+        cache_ohlcv(client, symbol_name, timeframe, df_tail)
+    except Exception as e:
+        log.warning(f"{symbol_name}: cache_ohlcv failed (non-fatal): {e}")
+
+
+def safe_get_active_params(client, symbol_name):
+    try:
+        return get_active_params(client, symbol_name)
+    except Exception as e:
+        log.warning(f"{symbol_name}: get_active_params failed, using baseline (non-fatal): {e}")
+        return None
+
+
+def safe_check_pending_outcomes(client, symbol_name, d):
+    try:
+        check_pending_outcomes(client, symbol_name, d)
+    except Exception as e:
+        log.warning(f"{symbol_name}: check_pending_outcomes failed (non-fatal): {e}")
+
+
+def safe_insert_signal(client, sig, confidence, version):
+    try:
+        insert_signal(client, sig, confidence, version)
+    except Exception as e:
+        log.warning(f"{sig.symbol}: insert_signal failed — signal WAS sent to Telegram "
+                    f"but NOT recorded in Supabase (non-fatal): {e}")
+
+
 def run():
     watchlist, params_default = load_config()
-    client = get_client()
+
+    try:
+        client = get_client()
+    except Exception as e:
+        log.warning(f"Supabase client init failed — continuing WITHOUT storage this run: {e}")
+        client = None
 
     for coin in watchlist["coins"]:
         symbol_name = coin["name"]
@@ -59,9 +108,12 @@ def run():
 
         try:
             df = fetch_latest_candle(coinex_symbol, watchlist["timeframe"])
-            cache_ohlcv(client, symbol_name, watchlist["timeframe"], df.tail(5))
 
-            active = get_active_params(client, symbol_name)
+            active = None
+            if client is not None:
+                safe_cache_ohlcv(client, symbol_name, watchlist["timeframe"], df.tail(5))
+                active = safe_get_active_params(client, symbol_name)
+
             risk_params = {
                 "atr_mult": active["atr_mult"] if active else params_default["risk_defaults"]["atr_mult"],
                 "tp1_r": active["tp1_r"] if active else params_default["risk_defaults"]["tp1_r"],
@@ -72,7 +124,8 @@ def run():
 
             d = generate_raw_signals(df, params_default)
 
-            check_pending_outcomes(client, symbol_name, d)
+            if client is not None:
+                safe_check_pending_outcomes(client, symbol_name, d)
 
             last_idx = len(d) - 1
             last_row = d.iloc[last_idx]
@@ -84,9 +137,11 @@ def run():
                     confirmed, confidence = is_signal_confirmed(model, d, last_idx, ml_threshold)
                     if confirmed:
                         version = active["version"] if active else "baseline"
+                        # اولویت با ارسال تلگرام است — این هیچ‌وقت نباید به‌خاطر Supabase قفل شود
                         send_signal(sig, confidence)
-                        insert_signal(client, sig, confidence, version)
                         log.info(f"Signal sent: {symbol_name} {sig.direction} (confidence={confidence:.2f})")
+                        if client is not None:
+                            safe_insert_signal(client, sig, confidence, version)
                     else:
                         log.info(f"Signal rejected by ML filter: {symbol_name} (confidence={confidence:.2f} < {ml_threshold})")
             else:
