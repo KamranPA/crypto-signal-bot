@@ -42,6 +42,12 @@ ml_defaults:
 execution:
   fee_pct_per_side: 0.10       # درصد کارمزد هر طرف معامله (ورود یا خروج)
   slippage_pct_per_side: 0.05  # برآورد اسلیپیج هر طرف
+  
+# مسیر فایل: config/params_default.yaml (اضافه به فایل فعلی، بعد از بخش execution)
+position_sizing:
+  risk_per_trade_pct: 1.0    # چند درصد از کل سرمایه در هر معامله (فاصله‌ی entry تا SL) ریسک شود
+  max_position_pct: 100.0    # سقف نسبت پوزیشن به سرمایه (۱۰۰ یعنی بدون اهرم/لوریج)
+
 
 # وزن‌دهی بک‌تست/زنده در حلقه‌ی یادگیری (بخش ۵.۲ architecture.md)
 blending_schedule_months:
