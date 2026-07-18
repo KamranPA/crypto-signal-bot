@@ -1,10 +1,14 @@
 # مسیر فایل: ml/optimize.py
 """
-بهینه‌سازی خودکار پارامترهای ریسک (TP/SL) و آستانه‌ی ML.
+بهینه‌سازی خودکار پارامترهای ریسک (TP/SL) و آستانه‌ی ML — مطابق architecture.md بخش ۶ و ۷.
+
 فاز ۱: فقط گروه ریسک و ML باز هستند (پارامترهای هسته‌ی اندیکاتور ثابت می‌مانند).
+تابع هدف: adjusted_score = monthly_score * confidence_factor(n_trades)
+  که خودش بدون قید سخت، بین کیفیت (win rate/expectancy) و کمیت (تعداد معامله) تعادل برقرار می‌کند.
 """
 from __future__ import annotations
 import math
+from datetime import datetime, timezone
 import optuna
 import pandas as pd
 
@@ -14,13 +18,16 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 def confidence_factor(n_trades: int, min_reliable: int = 8) -> float:
-    """جریمه‌ی نمونه‌ی کم — مشابه فلسفه‌ی Wilson score interval."""
+    """
+    جریمه‌ی نمونه‌ی کم — مشابه فلسفه‌ی Wilson score interval.
+    وقتی تعداد معامله خیلی کم است (آماره غیرقابل‌اعتماد)، امتیاز به‌شدت تضعیف می‌شود.
+    با نزدیک شدن به min_reliable و بیشتر، ضریب به ۱ میل می‌کند.
+    """
     if n_trades <= 0:
         return 0.0
     return 1 - math.exp(-n_trades / min_reliable)
 
 
-# مسیر فایل: ml/optimize.py
 def compute_adjusted_score(report: BacktestReport, months_covered: float) -> float:
     closed = report.closed_trades  # open_at_end از محاسبه حذف می‌شود (نتیجه‌ی واقعی نامعلوم است)
     n_closed = len(closed)
@@ -42,6 +49,7 @@ def compute_adjusted_score(report: BacktestReport, months_covered: float) -> flo
 
 
 def get_blending_weights(months_since_start: int, schedule: list[dict]) -> tuple[float, float]:
+    """خطی بین نقاط جدول blending_schedule_months از params_default.yaml درون‌یابی می‌کند."""
     schedule = sorted(schedule, key=lambda x: x["month"])
     if months_since_start <= schedule[0]["month"]:
         return schedule[0]["backtest_weight"], schedule[0]["live_weight"]
@@ -59,6 +67,7 @@ def get_blending_weights(months_since_start: int, schedule: list[dict]) -> tuple
 
 
 def walk_forward_windows(df: pd.DataFrame, n_windows: int = 4):
+    """df را به n_windows بازه‌ی متوالی تقسیم می‌کند: هر بازه هم train هم validation (بازه‌ی بعدی) دارد."""
     size = len(df) // (n_windows + 1)
     for i in range(n_windows):
         train = df.iloc[: size * (i + 1)]
@@ -72,6 +81,10 @@ def optimize_risk_and_threshold(df_backtest: pd.DataFrame, df_live: pd.DataFrame
                                  symbol: str, indicator_params: dict, search_space: dict,
                                  months_since_start: int, blending_schedule: list[dict],
                                  n_trials: int = 60) -> dict:
+    """
+    خروجی: بهترین پارامترهای ریسک + آستانه‌ی ML برای این ارز، همراه با متادیتای پایداری
+    (برای بررسی نوسان پارامتر بین دوره‌ها در جاب ماهانه).
+    """
     bw, lw = get_blending_weights(months_since_start, blending_schedule)
 
     def objective(trial: optuna.Trial) -> float:
@@ -82,7 +95,7 @@ def optimize_risk_and_threshold(df_backtest: pd.DataFrame, df_live: pd.DataFrame
             "tp3_r": trial.suggest_float("tp3_r", *search_space["tp3_r"]),
         }
         if not (risk_params["tp1_r"] < risk_params["tp2_r"] < risk_params["tp3_r"]):
-            raise optuna.TrialPruned()
+            raise optuna.TrialPruned()  # ترتیب منطقی TP ها باید حفظ شود
 
         scores = []
         for train_win, valid_win in walk_forward_windows(df_backtest):
@@ -92,7 +105,7 @@ def optimize_risk_and_threshold(df_backtest: pd.DataFrame, df_live: pd.DataFrame
 
         backtest_score = sum(scores) / len(scores) if scores else -math.inf
 
-        live_score = backtest_score
+        live_score = backtest_score  # مقدار پیش‌فرض تا داده‌ی زنده‌ی کافی جمع شود
         if df_live is not None and len(df_live) > 50:
             live_report = run_backtest(df_live, symbol, indicator_params, risk_params)
             live_months = (df_live.index[-1] - df_live.index[0]).days / 30.0
@@ -105,6 +118,7 @@ def optimize_risk_and_threshold(df_backtest: pd.DataFrame, df_live: pd.DataFrame
 
     return {
         "symbol": symbol,
+        "version": datetime.now(timezone.utc).strftime("%Y%m%d%H%M"),  # اصلاح‌شده: قبلاً این کلید اصلاً وجود نداشت
         "best_params": study.best_params,
         "best_score": study.best_value,
         "blending_weights": {"backtest": bw, "live": lw},
@@ -113,6 +127,10 @@ def optimize_risk_and_threshold(df_backtest: pd.DataFrame, df_live: pd.DataFrame
 
 
 def check_parameter_stability(history: list[dict], param_name: str, tolerance: float = 0.35) -> bool:
+    """
+    اگر مقدار پارامتر در ۳ دوره‌ی اخیر بیش از tolerance (نسبی) نوسان کند، ناپایدار تلقی می‌شود
+    و باید از میانگین متحرک به‌جای مقدار خام جدید استفاده شود (architecture.md بخش ۷).
+    """
     recent = [h["best_params"][param_name] for h in history[-3:] if param_name in h.get("best_params", {})]
     if len(recent) < 2:
         return True
