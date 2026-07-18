@@ -9,10 +9,12 @@
   ۴. در صورت تأیید: ارسال تلگرام + ذخیره در Supabase
   ۵. بررسی معاملات pending قبلی: آیا TP/SL لمس شده؟ (به‌روزرسانی وضعیت)
 
-نکته‌ی مهم (اصلاح‌شده): ارسال تلگرام هرگز نباید به موفقیت Supabase وابسته باشد.
-هر تعامل با Supabase جداگانه در try/except محافظت شده — اگر Supabase به هر دلیلی
-(کلید نامعتبر، قطعی سرویس) fail شود، فقط warning چاپ می‌شود و مسیر اصلی
-(سیگنال → تلگرام) ادامه پیدا می‌کند.
+نکته‌ی مهم: ارسال تلگرام هرگز نباید به موفقیت Supabase وابسته باشد. هر تعامل با
+Supabase جداگانه در try/except محافظت شده — اگر Supabase fail شود فقط warning
+چاپ می‌شود و مسیر اصلی (سیگنال → تلگرام) ادامه پیدا می‌کند.
+
+نکته‌ی دوم (اصلاح‌شده): وقتی مدل ML هنوز train نشده، confidence مقدار None است
+(نه ۱۰۰٪ ساختگی) تا در پیام تلگرام و لاگ‌ها با یک امتیاز واقعی مدل اشتباه گرفته نشود.
 """
 from __future__ import annotations
 import logging
@@ -139,11 +141,13 @@ def run():
                         version = active["version"] if active else "baseline"
                         # اولویت با ارسال تلگرام است — این هیچ‌وقت نباید به‌خاطر Supabase قفل شود
                         send_signal(sig, confidence)
-                        log.info(f"Signal sent: {symbol_name} {sig.direction} (confidence={confidence:.2f})")
+                        conf_str = f"{confidence:.2f}" if confidence is not None else "N/A (no ML model yet)"
+                        log.info(f"Signal sent: {symbol_name} {sig.direction} (confidence={conf_str})")
                         if client is not None:
                             safe_insert_signal(client, sig, confidence, version)
                     else:
-                        log.info(f"Signal rejected by ML filter: {symbol_name} (confidence={confidence:.2f} < {ml_threshold})")
+                        log.info(f"Signal rejected by ML filter: {symbol_name} "
+                                 f"(confidence={confidence:.2f} < {ml_threshold})")
             else:
                 log.info(f"No signal for {symbol_name} this bar.")
 
