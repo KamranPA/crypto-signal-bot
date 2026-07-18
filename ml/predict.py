@@ -24,8 +24,14 @@ def predict_confidence(model: lgb.Booster, df_with_indicators: pd.DataFrame, idx
 
 
 def is_signal_confirmed(model: lgb.Booster | None, df_with_indicators: pd.DataFrame,
-                         idx: int, threshold: float) -> tuple[bool, float]:
+                         idx: int, threshold: float) -> tuple[bool, float | None]:
+    """
+    خروجی دوم (confidence) وقتی مدلی وجود نداشته باشد None است — نه ۱.۰ —
+    تا با یک عدد واقعی مدل (که می‌تواند تصادفاً نزدیک ۱۰۰٪ هم باشد) اشتباه گرفته نشود.
+    فراخوان‌ها (پیام تلگرام، ذخیره در Supabase) باید None را جدا نمایش/ذخیره کنند.
+    """
     if model is None:
-        return True, 1.0
+        # هنوز مدلی برای این ارز train نشده (مثلاً هفته‌ی اول) — سیگنال rule-based بدون فیلتر رد می‌شود
+        return True, None
     confidence = predict_confidence(model, df_with_indicators, idx)
     return confidence >= threshold, confidence
