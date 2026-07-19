@@ -6,15 +6,16 @@
   ۱. برای هر ارز واچ‌لیست: دریافت کندل‌های اخیر از CoinEx
   ۲. محاسبه‌ی اندیکاتورها + تولید سیگنال rule-based (strategy/core.py)
   ۳. اگر سیگنال جدید بود: فیلتر ML (ml/predict.py) با آستانه‌ی فعال آن ارز
-  ۴. در صورت تأیید: ارسال تلگرام + ذخیره در Supabase
+  ۴. در صورت تأیید: ارسال تلگرام + ذخیره در Supabase (جدول signals)
+     در صورت رد شدن توسط ML: ذخیره در جدول rejected_signals (برای تحلیل بعدی آستانه)
   ۵. بررسی معاملات pending قبلی: آیا TP/SL لمس شده؟ (به‌روزرسانی وضعیت)
 
 نکته‌ی مهم: ارسال تلگرام هرگز نباید به موفقیت Supabase وابسته باشد. هر تعامل با
 Supabase جداگانه در try/except محافظت شده — اگر Supabase fail شود فقط warning
 چاپ می‌شود و مسیر اصلی (سیگنال → تلگرام) ادامه پیدا می‌کند.
 
-نکته‌ی دوم (اصلاح‌شده): وقتی مدل ML هنوز train نشده، confidence مقدار None است
-(نه ۱۰۰٪ ساختگی) تا در پیام تلگرام و لاگ‌ها با یک امتیاز واقعی مدل اشتباه گرفته نشود.
+نکته‌ی دوم: وقتی مدل ML هنوز train نشده، confidence مقدار None است (نه ۱۰۰٪ ساختگی)
+تا در پیام تلگرام و لاگ‌ها با یک امتیاز واقعی مدل اشتباه گرفته نشود.
 """
 from __future__ import annotations
 import logging
@@ -26,7 +27,8 @@ from strategy.core import generate_raw_signals, build_signal
 from ml.predict import load_latest_model, is_signal_confirmed
 from notify.telegram_bot import send_signal
 from storage.supabase_client import (
-    get_client, insert_signal, cache_ohlcv, get_active_params, get_pending_signals, update_signal_status,
+    get_client, insert_signal, insert_rejected_signal, cache_ohlcv,
+    get_active_params, get_pending_signals, update_signal_status,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -94,6 +96,13 @@ def safe_insert_signal(client, sig, confidence, version):
                     f"but NOT recorded in Supabase (non-fatal): {e}")
 
 
+def safe_insert_rejected_signal(client, sig, confidence, threshold):
+    try:
+        insert_rejected_signal(client, sig, confidence, threshold)
+    except Exception as e:
+        log.warning(f"{sig.symbol}: insert_rejected_signal failed (non-fatal): {e}")
+
+
 def run():
     watchlist, params_default = load_config()
 
@@ -148,6 +157,8 @@ def run():
                     else:
                         log.info(f"Signal rejected by ML filter: {symbol_name} "
                                  f"(confidence={confidence:.2f} < {ml_threshold})")
+                        if client is not None:
+                            safe_insert_rejected_signal(client, sig, confidence, ml_threshold)
             else:
                 log.info(f"No signal for {symbol_name} this bar.")
 
