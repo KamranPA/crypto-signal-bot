@@ -18,7 +18,7 @@ def get_client() -> Client:
             f"SUPABASE_URL باید با https:// شروع شود، مقدار فعلی این‌طور نیست: {url!r} "
             "(نمونه‌ی صحیح: https://xxxxxxxxxxxxx.supabase.co — از Project Settings > API > Project URL)"
         )
-    url = url.rstrip("/")  # اسلش اضافه در انتها هم گاهی باعث خطای Invalid URL می‌شود
+    url = url.rstrip("/")
 
     return create_client(url, key)
 
@@ -50,6 +50,25 @@ def insert_signal(client: Client, sig: Signal, confidence: float, params_version
         "status": "pending",
         "sent_to_telegram": True,
         "params_version": params_version,
+    }).execute()
+
+
+def insert_rejected_signal(client: Client, sig: Signal, confidence: float, threshold: float):
+    """
+    ثبت سیگنال‌های خامی که rule-based تشخیص داده شدند ولی فیلتر ML ردشان کرد.
+    قبلاً این سیگنال‌ها هیچ‌جا ذخیره نمی‌شدند و فقط در لاگ موقت GitHub Actions
+    دیده می‌شدند — برای تحلیل بعدی (مثلاً بررسی توزیع confidence رد‌شده‌ها و
+    تصمیم درباره‌ی مناسب‌بودن آستانه‌ی فعلی) این جدول اضافه شد.
+    """
+    client.table("rejected_signals").insert({
+        "symbol": sig.symbol,
+        "timestamp": sig.timestamp.isoformat(),
+        "direction": sig.direction,
+        "entry": sig.entry,
+        "stop_loss": sig.stop_loss,
+        "tp1": sig.tp1, "tp2": sig.tp2, "tp3": sig.tp3,
+        "ml_confidence": confidence,
+        "ml_threshold": threshold,
     }).execute()
 
 
