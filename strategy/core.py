@@ -41,10 +41,6 @@ def generate_raw_signals(df: pd.DataFrame, params: dict) -> pd.DataFrame:
                and (signalsTrendCloud ? ...                  : true)  -> پیش‌فرض false → true
 
     یعنی سیگنال پیش‌فرض واقعی فقط «Supertrend crossover + ADX > adx_threshold» است.
-    شرایط MACD/EMA150-250/HMA rising/Donchian (که در نسخه‌ی قبلی این تابع اشتباهاً
-    اینجا اعمال شده بودند) در کد اصلی متعلق به confBull/confBear هستند — متغیرهایی
-    که فقط برای preset دیگری به‌نام "Strong+" استفاده می‌شوند و در این پیکربندی
-    (Presets == "All Signals" ثابت) هرگز در مسیر اجرا قرار نمی‌گیرند.
     """
     d = compute_all_indicators(df, params)
     adx_threshold = params["indicator"]["adx_threshold"]
@@ -63,8 +59,6 @@ def compute_tp_sl(entry: float, direction: str, atr_value: float, risk_params: d
     """
     معادل منطق atrStop / tp1_y / tp2_y / tp3_y در کد اصلی.
     risk_params شامل: atr_mult, tp1_r, tp2_r, tp3_r
-    (این پارامترها هم می‌توانند baseline باشند هم خروجی بهینه‌سازی Optuna برای آن ارز خاص —
-    ml/optimize.py مقدار per-coin را در param_history ذخیره و اینجا فقط مصرف می‌شود.)
     """
     atr_band = atr_value * risk_params["atr_mult"]
     if direction == "bull":
@@ -84,7 +78,16 @@ def compute_tp_sl(entry: float, direction: str, atr_value: float, risk_params: d
 
 
 def build_signal(df_with_indicators: pd.DataFrame, idx: int, symbol: str, risk_params: dict) -> Signal | None:
-    """یک سیگنال کامل (با TP/SL) برای ردیف idx می‌سازد، اگر bull یا bear باشد."""
+    """
+    یک سیگنال کامل (با TP/SL) برای ردیف idx می‌سازد، اگر bull یا bear باشد.
+
+    نکته‌ی اصلاح‌شده (باگ numpy): مقادیر خوانده‌شده از pandas (row["close"], row["atr14"])
+    از نوع numpy.float64 هستند، نه float پایتون. اگر این‌ها بدون تبدیل در محاسبات بعدی
+    (TradeResult, BacktestReport.profit_factor, مقایسه‌های بولی مثل `x > y`) به کار روند،
+    نتیجه‌ی مقایسه از نوع numpy.bool_ خواهد بود که در JSON قابل serialize نیست و
+    ارسال به Supabase را با خطای "Object of type bool is not JSON serializable" می‌شکند.
+    برای همین همینجا (سرچشمه‌ی تمام محاسبات بعدی) به float پایتون تبدیل می‌شوند.
+    """
     row = df_with_indicators.iloc[idx]
     if row.get("bull"):
         direction = "bull"
@@ -93,14 +96,17 @@ def build_signal(df_with_indicators: pd.DataFrame, idx: int, symbol: str, risk_p
     else:
         return None
 
-    levels = compute_tp_sl(row["close"], direction, row["atr14"], risk_params)
+    entry = float(row["close"])
+    atr_value = float(row["atr14"])
+
+    levels = compute_tp_sl(entry, direction, atr_value, risk_params)
     return Signal(
         timestamp=df_with_indicators.index[idx],
         symbol=symbol,
         direction=direction,
-        entry=row["close"],
-        stop_loss=levels["stop_loss"],
-        tp1=levels["tp1"],
-        tp2=levels["tp2"],
-        tp3=levels["tp3"],
+        entry=entry,
+        stop_loss=float(levels["stop_loss"]),
+        tp1=float(levels["tp1"]),
+        tp2=float(levels["tp2"]),
+        tp3=float(levels["tp3"]),
     )
