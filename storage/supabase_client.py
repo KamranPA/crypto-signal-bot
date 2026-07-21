@@ -23,6 +23,16 @@ def get_client() -> Client:
     return create_client(url, key)
 
 
+def _to_native(value):
+    """
+    تبدیل هر مقدار numpy (float64, bool_, int64 و ...) به نوع بومی پایتون،
+    درست قبل از ارسال به Supabase. لایه‌ی محافظ در برابر نشتی numpy از هر جای دیگر کد.
+    """
+    if hasattr(value, "item"):  # numpy scalarها متد item() برای تبدیل به نوع بومی دارند
+        return value.item()
+    return value
+
+
 def cache_ohlcv(client: Client, symbol: str, timeframe: str, df: pd.DataFrame):
     records = [
         {
@@ -43,10 +53,10 @@ def insert_signal(client: Client, sig: Signal, confidence: float, params_version
         "symbol": sig.symbol,
         "timestamp": sig.timestamp.isoformat(),
         "direction": sig.direction,
-        "entry": sig.entry,
-        "stop_loss": sig.stop_loss,
-        "tp1": sig.tp1, "tp2": sig.tp2, "tp3": sig.tp3,
-        "ml_confidence": confidence,
+        "entry": _to_native(sig.entry),
+        "stop_loss": _to_native(sig.stop_loss),
+        "tp1": _to_native(sig.tp1), "tp2": _to_native(sig.tp2), "tp3": _to_native(sig.tp3),
+        "ml_confidence": _to_native(confidence),
         "status": "pending",
         "sent_to_telegram": True,
         "params_version": params_version,
@@ -54,21 +64,16 @@ def insert_signal(client: Client, sig: Signal, confidence: float, params_version
 
 
 def insert_rejected_signal(client: Client, sig: Signal, confidence: float, threshold: float):
-    """
-    ثبت سیگنال‌های خامی که rule-based تشخیص داده شدند ولی فیلتر ML ردشان کرد.
-    قبلاً این سیگنال‌ها هیچ‌جا ذخیره نمی‌شدند و فقط در لاگ موقت GitHub Actions
-    دیده می‌شدند — برای تحلیل بعدی (مثلاً بررسی توزیع confidence رد‌شده‌ها و
-    تصمیم درباره‌ی مناسب‌بودن آستانه‌ی فعلی) این جدول اضافه شد.
-    """
+    """ثبت سیگنال‌های خامی که rule-based تأیید شدند ولی فیلتر ML ردشان کرد."""
     client.table("rejected_signals").insert({
         "symbol": sig.symbol,
         "timestamp": sig.timestamp.isoformat(),
         "direction": sig.direction,
-        "entry": sig.entry,
-        "stop_loss": sig.stop_loss,
-        "tp1": sig.tp1, "tp2": sig.tp2, "tp3": sig.tp3,
-        "ml_confidence": confidence,
-        "ml_threshold": threshold,
+        "entry": _to_native(sig.entry),
+        "stop_loss": _to_native(sig.stop_loss),
+        "tp1": _to_native(sig.tp1), "tp2": _to_native(sig.tp2), "tp3": _to_native(sig.tp3),
+        "ml_confidence": _to_native(confidence),
+        "ml_threshold": _to_native(threshold),
     }).execute()
 
 
@@ -80,7 +85,7 @@ def get_pending_signals(client: Client, symbol: str) -> list[dict]:
 def update_signal_status(client: Client, signal_id: int, status: str, pnl_pct: float):
     client.table("signals").update({
         "status": status,
-        "pnl_pct": pnl_pct,
+        "pnl_pct": _to_native(pnl_pct),
         "closed_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", signal_id).execute()
 
@@ -91,11 +96,16 @@ def save_param_version(client: Client, symbol: str, version: str, risk_params: d
     client.table("param_history").insert({
         "symbol": symbol, "version": version,
         "effective_from": datetime.now(timezone.utc).isoformat(),
-        "atr_mult": risk_params["atr_mult"],
-        "tp1_r": risk_params["tp1_r"], "tp2_r": risk_params["tp2_r"], "tp3_r": risk_params["tp3_r"],
-        "ml_threshold": ml_threshold, "adjusted_score": adjusted_score,
-        "backtest_weight": weights["backtest"], "live_weight": weights["live"],
-        "accepted": accepted, "notes": notes,
+        "atr_mult": _to_native(risk_params["atr_mult"]),
+        "tp1_r": _to_native(risk_params["tp1_r"]),
+        "tp2_r": _to_native(risk_params["tp2_r"]),
+        "tp3_r": _to_native(risk_params["tp3_r"]),
+        "ml_threshold": _to_native(ml_threshold),
+        "adjusted_score": _to_native(adjusted_score),
+        "backtest_weight": _to_native(weights["backtest"]),
+        "live_weight": _to_native(weights["live"]),
+        "accepted": bool(accepted),  # صراحتاً bool پایتون، نه هر چیز شبه‌بولی دیگر
+        "notes": notes,
     }).execute()
 
 
