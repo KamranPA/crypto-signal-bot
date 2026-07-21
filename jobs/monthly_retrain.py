@@ -1,6 +1,17 @@
 # مسیر فایل: jobs/monthly_retrain.py
 """
 اسکریپت اجرای ماهانه — توسط .github/workflows/monthly_retrain.yml اجرا می‌شود.
+
+مراحل (اصلاح‌شده در ترتیب اجرا):
+  ۱. دریافت داده‌ی تازه از هر دو منبع (Yahoo برای تاریخچه، CoinEx برای بخش اخیر/زنده)
+  ۲. کالیبراسیون و ساخت دیتاست بک‌تست ترکیبی
+  ۳. بهینه‌سازی Optuna پارامترهای ریسک (مستقل از مدل ML)
+  ۴. Labeling (Triple-Barrier) + ری‌ترین مدل ML هر ارز
+  ۵. انتخاب آستانه‌ی ML واقعی از روی منحنی precision-recall مدل تازه train‌شده
+     (قبلاً این عدد همیشه مقدار ثابت پیش‌فرض ۰.۵۵ بود — که طبق داده‌ی واقعی
+     rejected_signals عملاً همه‌ی سیگنال‌ها را رد می‌کرد)
+  ۶. بررسی پایداری پارامتر + مقایسه با نسخه‌ی فعلی → پذیرش/رد
+  ۷. ذخیره در Supabase + تولید گزارش بک‌تست به‌روز (commit در گیت‌هاب)
 """
 from __future__ import annotations
 import logging
@@ -14,6 +25,7 @@ from data.calibration import build_calibrated_history
 from strategy.core import generate_raw_signals
 from ml.labeling import build_labeled_dataset
 from ml.train import train_model
+from ml.threshold import select_ml_threshold
 from ml.optimize import optimize_risk_and_threshold
 from backtest.engine import run_backtest
 from backtest.report_generator import generate_html_report, generate_summary_md
@@ -54,6 +66,7 @@ def run():
 
             d = generate_raw_signals(df_combined, params_default)
 
+            # --- بهینه‌سازی پارامترهای ریسک (مستقل از مدل ML) ---
             search_space = params_default["risk_defaults"]["search_space"]
             months = months_since_project_start()
             result = optimize_risk_and_threshold(
@@ -74,6 +87,7 @@ def run():
                 "tp3_r": result["best_params"]["tp3_r"],
             }
 
+            # --- مقایسه با نسخه‌ی فعلی ریسک؛ پذیرش فقط با بهبود معنادار ---
             active = get_active_params(client, symbol_name)
             accepted = True
             notes = "اولین نسخه" if not active else ""
@@ -87,31 +101,45 @@ def run():
                 accepted = improvement > 0.1
                 notes = f"بهبود Profit Factor: {improvement:+.2f}"
 
-            save_param_version(
-                client, symbol_name, result.get("version", "n/a"), best_risk,
-                ml_threshold=params_default["ml_defaults"]["confidence_threshold"],
-                adjusted_score=result["best_score"],
-                weights=result["blending_weights"],
-                accepted=accepted, notes=notes,
-            )
-
             final_risk = best_risk if accepted else {
                 "atr_mult": active["atr_mult"], "tp1_r": active["tp1_r"],
                 "tp2_r": active["tp2_r"], "tp3_r": active["tp3_r"],
             } if active else params_default["risk_defaults"]
 
+            # --- ری‌ترین ML با پارامترهای ریسک نهایی ---
             labeled = build_labeled_dataset(d, symbol_name, final_risk)
-            if len(labeled) >= 30:
-                train_model(labeled, symbol_name)
-            else:
-                log.warning(f"{symbol_name}: داده‌ی کافی برای ری‌ترین ML نیست ({len(labeled)} نمونه)")
+            ml_threshold = params_default["ml_defaults"]["confidence_threshold"]  # fallback اگر داده کم بود
 
+            if len(labeled) >= 30:
+                train_result = train_model(labeled, symbol_name)
+                pr_curve = train_result["metrics"]["precision_recall_curve"]
+                ml_threshold = select_ml_threshold(
+                    pr_curve["precision"], pr_curve["recall"], pr_curve["thresholds"],
+                    min_recall=0.05,
+                    default=params_default["ml_defaults"]["confidence_threshold"],
+                )
+                log.info(f"{symbol_name}: آستانه‌ی ML از منحنی precision-recall واقعی انتخاب شد: "
+                         f"{ml_threshold:.3f} (قبلاً ثابت: {params_default['ml_defaults']['confidence_threshold']})")
+            else:
+                log.warning(f"{symbol_name}: داده‌ی کافی برای ری‌ترین ML نیست ({len(labeled)} نمونه) — "
+                            f"آستانه‌ی پیش‌فرض ({ml_threshold}) نگه داشته می‌شود")
+
+            # --- ذخیره‌ی پارامتر نهایی (ریسک + آستانه‌ی واقعی ML) ---
+            save_param_version(
+                client, symbol_name, result.get("version", "n/a"), final_risk,
+                ml_threshold=ml_threshold,
+                adjusted_score=result["best_score"],
+                weights=result["blending_weights"],
+                accepted=accepted, notes=notes,
+            )
+
+            # --- گزارش بک‌تست به‌روز ---
             report = run_backtest(df_combined, symbol_name, params_default, final_risk)
             generate_html_report(report)
             reports.append(report)
 
             log.info(f"{symbol_name}: accepted={accepted}, n_trades={report.n_trades}, "
-                     f"win_rate={report.win_rate:.1%}")
+                     f"win_rate={report.win_rate:.1%}, ml_threshold={ml_threshold:.3f}")
 
         except Exception as e:
             log.exception(f"Error retraining {symbol_name}: {e}")
