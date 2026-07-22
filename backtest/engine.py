@@ -77,9 +77,12 @@ class BacktestReport:
             return 0.0
         return sum(t.pnl_pct for t in closed) / len(closed)
 
+    # مسیر فایل: backtest/engine.py (فقط این پراپرتی عوض شد، بقیه‌ی فایل دست‌نخورده)
     @property
     def profit_factor(self) -> float:
         closed = self.closed_trades
+        if not closed:
+            return float("nan")  # به‌جای inf، تا با «برد بدون باخت واقعی» اشتباه نشود
         gains = sum(t.pnl_pct for t in closed if t.pnl_pct > 0)
         losses = -sum(t.pnl_pct for t in closed if t.pnl_pct < 0)
         return gains / losses if losses > 0 else float("inf")
