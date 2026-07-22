@@ -1,0 +1,43 @@
+# مسیر فایل: .github/workflows/backtest_ml_filtered_on_demand.yml
+name: Backtest ML-Filtered (On Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'یک ارز خاص (خالی = کل واچ‌لیست)'
+        required: false
+        default: ''
+      coinex_only:
+        description: 'فقط CoinEx (بدون Yahoo، سریع‌تر)'
+        type: boolean
+        default: true
+
+jobs:
+  backtest_ml_filtered:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run ML-filtered backtest
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.symbol }}" ]; then
+            ARGS="$ARGS --symbol ${{ github.event.inputs.symbol }}"
+          fi
+          if [ "${{ github.event.inputs.coinex_only }}" = "true" ]; then
+            ARGS="$ARGS --coinex-only"
+          fi
+          python -m jobs.backtest_ml_filtered $ARGS
