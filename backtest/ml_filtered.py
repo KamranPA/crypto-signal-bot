@@ -72,12 +72,17 @@ def run_ml_filtered_backtest(df: pd.DataFrame, symbol: str, params: dict, risk_p
     return full_report, filtered_report
 
 
+# مسیر فایل: backtest/ml_filtered.py (فقط تابع print_comparison عوض شد)
 def print_comparison(symbol: str, full_report: BacktestReport, filtered_report: BacktestReport):
     """چاپ خلاصه‌ی مقایسه‌ی rule-based خام در برابر فیلترشده‌ی ML، برای لاگ/کنسول."""
+    def fmt(report: BacktestReport) -> str:
+        n = len(report.closed_trades)
+        if n == 0:
+            return "n=   0  (هیچ معامله‌ای در این بازه نبود — نمی‌توان قضاوت کرد)"
+        return (f"n={n:4d}  win_rate={report.win_rate:.1%}  "
+                f"PF={report.profit_factor:.2f}  avg_pnl={report.avg_pnl_pct:.2f}%  "
+                f"DD={report.max_drawdown_pct:.2f}%")
+
     print(f"=== {symbol}: rule-based خام در برابر فیلترشده‌ی ML (فقط روی test split) ===")
-    print(f"  خام      : n={len(full_report.closed_trades):4d}  win_rate={full_report.win_rate:.1%}  "
-          f"PF={full_report.profit_factor:.2f}  avg_pnl={full_report.avg_pnl_pct:.2f}%  "
-          f"DD={full_report.max_drawdown_pct:.2f}%")
-    print(f"  فیلترشده : n={len(filtered_report.closed_trades):4d}  win_rate={filtered_report.win_rate:.1%}  "
-          f"PF={filtered_report.profit_factor:.2f}  avg_pnl={filtered_report.avg_pnl_pct:.2f}%  "
-          f"DD={filtered_report.max_drawdown_pct:.2f}%")
+    print(f"  خام      : {fmt(full_report)}")
+    print(f"  فیلترشده : {fmt(filtered_report)}")
