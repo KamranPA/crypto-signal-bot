@@ -5,17 +5,14 @@
 مراحل:
   ۱. برای هر ارز واچ‌لیست: دریافت کندل‌های اخیر از CoinEx
   ۲. محاسبه‌ی اندیکاتورها + تولید سیگنال rule-based (strategy/core.py)
-  ۳. اگر سیگنال جدید بود: فیلتر ML (ml/predict.py) با آستانه‌ی فعال آن ارز
+  ۳. اگر use_ml_filter=True برای این ارز: فیلتر ML با آستانه‌ی فعال اعمال می‌شود
+     اگر use_ml_filter=False: طبق بک‌تست ماهانه، فیلتر ML برای این ارز بیشتر ضرر می‌زند
+     تا کمک — سیگنال rule-based بدون فیلتر مستقیم تأیید می‌شود
   ۴. در صورت تأیید: ارسال تلگرام + ذخیره در Supabase (جدول signals)
-     در صورت رد شدن توسط ML: ذخیره در جدول rejected_signals (برای تحلیل بعدی آستانه)
+     در صورت رد شدن توسط ML: ذخیره در جدول rejected_signals
   ۵. بررسی معاملات pending قبلی: آیا TP/SL لمس شده؟ (به‌روزرسانی وضعیت)
 
-نکته‌ی مهم: ارسال تلگرام هرگز نباید به موفقیت Supabase وابسته باشد. هر تعامل با
-Supabase جداگانه در try/except محافظت شده — اگر Supabase fail شود فقط warning
-چاپ می‌شود و مسیر اصلی (سیگنال → تلگرام) ادامه پیدا می‌کند.
-
-نکته‌ی دوم: وقتی مدل ML هنوز train نشده، confidence مقدار None است (نه ۱۰۰٪ ساختگی)
-تا در پیام تلگرام و لاگ‌ها با یک امتیاز واقعی مدل اشتباه گرفته نشود.
+نکته‌ی مهم: ارسال تلگرام هرگز نباید به موفقیت Supabase وابسته باشد.
 """
 from __future__ import annotations
 import logging
@@ -44,7 +41,6 @@ def load_config():
 
 
 def check_pending_outcomes(client, symbol: str, df_with_indicators):
-    """بررسی می‌کند آیا معاملات pending این ارز به TP/SL رسیده‌اند (برای حلقه‌ی یادگیری)."""
     pending = get_pending_signals(client, symbol)
     last_row = df_with_indicators.iloc[-1]
     for p in pending:
@@ -66,7 +62,6 @@ def check_pending_outcomes(client, symbol: str, df_with_indicators):
 
 
 def safe_cache_ohlcv(client, symbol_name, timeframe, df_tail):
-    """ذخیره در Supabase — اگر fail شود فقط warning می‌دهد، جریان اصلی متوقف نمی‌شود."""
     try:
         cache_ohlcv(client, symbol_name, timeframe, df_tail)
     except Exception as e:
@@ -132,6 +127,7 @@ def run():
                 "tp3_r": active["tp3_r"] if active else params_default["risk_defaults"]["tp3_r"],
             }
             ml_threshold = active["ml_threshold"] if active else params_default["ml_defaults"]["confidence_threshold"]
+            use_ml_filter = active.get("use_ml_filter", True) if active else True
 
             d = generate_raw_signals(df, params_default)
 
@@ -144,13 +140,21 @@ def run():
             if last_row.get("bull") or last_row.get("bear"):
                 sig = build_signal(d, last_idx, symbol_name, risk_params)
                 if sig is not None:
-                    model = load_latest_model(symbol_name)
-                    confirmed, confidence = is_signal_confirmed(model, d, last_idx, ml_threshold)
+                    if use_ml_filter:
+                        model = load_latest_model(symbol_name)
+                        confirmed, confidence = is_signal_confirmed(model, d, last_idx, ml_threshold)
+                    else:
+                        confirmed, confidence = True, None
+
                     if confirmed:
                         version = active["version"] if active else "baseline"
-                        # اولویت با ارسال تلگرام است — این هیچ‌وقت نباید به‌خاطر Supabase قفل شود
                         send_signal(sig, confidence)
-                        conf_str = f"{confidence:.2f}" if confidence is not None else "N/A (no ML model yet)"
+                        if confidence is not None:
+                            conf_str = f"{confidence:.2f}"
+                        elif not use_ml_filter:
+                            conf_str = "N/A (use_ml_filter=False for this coin)"
+                        else:
+                            conf_str = "N/A (no ML model yet)"
                         log.info(f"Signal sent: {symbol_name} {sig.direction} (confidence={conf_str})")
                         if client is not None:
                             safe_insert_signal(client, sig, confidence, version)
