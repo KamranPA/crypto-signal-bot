@@ -24,11 +24,8 @@ def get_client() -> Client:
 
 
 def _to_native(value):
-    """
-    تبدیل هر مقدار numpy (float64, bool_, int64 و ...) به نوع بومی پایتون،
-    درست قبل از ارسال به Supabase. لایه‌ی محافظ در برابر نشتی numpy از هر جای دیگر کد.
-    """
-    if hasattr(value, "item"):  # numpy scalarها متد item() برای تبدیل به نوع بومی دارند
+    """تبدیل هر مقدار numpy (float64, bool_, int64 و ...) به نوع بومی پایتون."""
+    if hasattr(value, "item"):
         return value.item()
     return value
 
@@ -92,7 +89,7 @@ def update_signal_status(client: Client, signal_id: int, status: str, pnl_pct: f
 
 def save_param_version(client: Client, symbol: str, version: str, risk_params: dict,
                         ml_threshold: float, adjusted_score: float, weights: dict,
-                        accepted: bool, notes: str = ""):
+                        accepted: bool, notes: str = "", use_ml_filter: bool = True):
     client.table("param_history").insert({
         "symbol": symbol, "version": version,
         "effective_from": datetime.now(timezone.utc).isoformat(),
@@ -104,7 +101,8 @@ def save_param_version(client: Client, symbol: str, version: str, risk_params: d
         "adjusted_score": _to_native(adjusted_score),
         "backtest_weight": _to_native(weights["backtest"]),
         "live_weight": _to_native(weights["live"]),
-        "accepted": bool(accepted),  # صراحتاً bool پایتون، نه هر چیز شبه‌بولی دیگر
+        "accepted": bool(accepted),
+        "use_ml_filter": bool(use_ml_filter),
         "notes": notes,
     }).execute()
 
