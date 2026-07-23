@@ -2,16 +2,16 @@
 """
 اسکریپت اجرای ماهانه — توسط .github/workflows/monthly_retrain.yml اجرا می‌شود.
 
-مراحل (اصلاح‌شده در ترتیب اجرا):
+مراحل:
   ۱. دریافت داده‌ی تازه از هر دو منبع (Yahoo برای تاریخچه، CoinEx برای بخش اخیر/زنده)
   ۲. کالیبراسیون و ساخت دیتاست بک‌تست ترکیبی
   ۳. بهینه‌سازی Optuna پارامترهای ریسک (مستقل از مدل ML)
   ۴. Labeling (Triple-Barrier) + ری‌ترین مدل ML هر ارز
   ۵. انتخاب آستانه‌ی ML واقعی از روی منحنی precision-recall مدل تازه train‌شده
-     (قبلاً این عدد همیشه مقدار ثابت پیش‌فرض ۰.۵۵ بود — که طبق داده‌ی واقعی
-     rejected_signals عملاً همه‌ی سیگنال‌ها را رد می‌کرد)
-  ۶. بررسی پایداری پارامتر + مقایسه با نسخه‌ی فعلی → پذیرش/رد
-  ۷. ذخیره در Supabase + تولید گزارش بک‌تست به‌روز (commit در گیت‌هاب)
+  ۶. بک‌تست مقایسه‌ای (خام در برابر فیلترشده‌ی ML) روی test split برای تصمیم این‌که
+     آیا فیلتر ML اصلاً برای این ارز کمک می‌کند یا نه (use_ml_filter)
+  ۷. بررسی پایداری پارامتر + مقایسه با نسخه‌ی فعلی → پذیرش/رد
+  ۸. ذخیره در Supabase + تولید گزارش بک‌تست به‌روز (commit در گیت‌هاب)
 """
 from __future__ import annotations
 import logging
@@ -26,8 +26,10 @@ from strategy.core import generate_raw_signals
 from ml.labeling import build_labeled_dataset
 from ml.train import train_model
 from ml.threshold import select_ml_threshold
+from ml.predict import load_latest_model
 from ml.optimize import optimize_risk_and_threshold
 from backtest.engine import run_backtest
+from backtest.ml_filtered import run_ml_filtered_backtest, decide_use_ml_filter, print_comparison
 from backtest.report_generator import generate_html_report, generate_summary_md
 from storage.supabase_client import get_client, save_param_version, get_active_params
 
@@ -108,7 +110,8 @@ def run():
 
             # --- ری‌ترین ML با پارامترهای ریسک نهایی ---
             labeled = build_labeled_dataset(d, symbol_name, final_risk)
-            ml_threshold = params_default["ml_defaults"]["confidence_threshold"]  # fallback اگر داده کم بود
+            ml_threshold = params_default["ml_defaults"]["confidence_threshold"]
+            use_ml_filter = True  # پیش‌فرض محافظه‌کارانه تا مقایسه‌ی واقعی انجام شود
 
             if len(labeled) >= 30:
                 train_result = train_model(labeled, symbol_name)
@@ -120,26 +123,38 @@ def run():
                 )
                 log.info(f"{symbol_name}: آستانه‌ی ML از منحنی precision-recall واقعی انتخاب شد: "
                          f"{ml_threshold:.3f} (قبلاً ثابت: {params_default['ml_defaults']['confidence_threshold']})")
+
+                # --- تصمیم: آیا فیلتر ML برای این ارز واقعاً کمک می‌کند؟ (روی test split) ---
+                fresh_model = load_latest_model(symbol_name)
+                full_report_ml, filtered_report_ml = run_ml_filtered_backtest(
+                    df_combined, symbol_name, params_default, final_risk,
+                    fresh_model, ml_threshold, test_only=True,
+                )
+                print_comparison(symbol_name, full_report_ml, filtered_report_ml)
+                use_ml_filter = decide_use_ml_filter(full_report_ml, filtered_report_ml)
+                log.info(f"{symbol_name}: use_ml_filter = {use_ml_filter}")
             else:
                 log.warning(f"{symbol_name}: داده‌ی کافی برای ری‌ترین ML نیست ({len(labeled)} نمونه) — "
-                            f"آستانه‌ی پیش‌فرض ({ml_threshold}) نگه داشته می‌شود")
+                            f"آستانه‌ی پیش‌فرض ({ml_threshold}) و use_ml_filter=True نگه داشته می‌شود")
 
-            # --- ذخیره‌ی پارامتر نهایی (ریسک + آستانه‌ی واقعی ML) ---
+            # --- ذخیره‌ی پارامتر نهایی (ریسک + آستانه‌ی واقعی ML + تصمیم فیلتر) ---
             save_param_version(
                 client, symbol_name, result.get("version", "n/a"), final_risk,
                 ml_threshold=ml_threshold,
                 adjusted_score=result["best_score"],
                 weights=result["blending_weights"],
                 accepted=accepted, notes=notes,
+                use_ml_filter=use_ml_filter,
             )
 
-            # --- گزارش بک‌تست به‌روز ---
+            # --- گزارش بک‌تست به‌روز (rule-based کامل، برای مرجع کلی) ---
             report = run_backtest(df_combined, symbol_name, params_default, final_risk)
             generate_html_report(report)
             reports.append(report)
 
             log.info(f"{symbol_name}: accepted={accepted}, n_trades={report.n_trades}, "
-                     f"win_rate={report.win_rate:.1%}, ml_threshold={ml_threshold:.3f}")
+                     f"win_rate={report.win_rate:.1%}, ml_threshold={ml_threshold:.3f}, "
+                     f"use_ml_filter={use_ml_filter}")
 
         except Exception as e:
             log.exception(f"Error retraining {symbol_name}: {e}")
