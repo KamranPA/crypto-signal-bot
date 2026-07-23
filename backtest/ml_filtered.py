@@ -2,16 +2,17 @@
 """
 بک‌تست «کل سیستم» — یعنی سیگنال rule-based + فیلتر واقعی مدل ML، نه فقط منطق خام.
 
-تا الان backtest/engine.py فقط منطق rule-based را ارزیابی می‌کرد (بدون فیلتر ML) —
-که با آنچه واقعاً در جاب ساعتی زنده اجرا می‌شود متفاوت است. این ماژول آن شکاف را پر می‌کند.
-
 نکته‌ی حیاتی برای جلوگیری از نتیجه‌ی گمراه‌کننده (look-ahead bias):
 مدل ML روی ۷۰٪ اول داده train شده (ml/train.py: walk_forward_split, train_ratio=0.7).
-اگر بک‌تست فیلترشده را روی کل تاریخچه (شامل همان ۷۰٪ که مدل دیده) اجرا کنیم، نتیجه
-به‌طور مصنوعی خوش‌بینانه خواهد بود. برای همین این ماژول فقط روی همان ۳۰٪ انتهایی
-(test split — داده‌ای که مدل موقع آموزش ندیده) کار می‌کند تا نتیجه منصفانه باشد.
+این ماژول فقط روی همان ۳۰٪ انتهایی (test split — داده‌ای که مدل موقع آموزش ندیده) کار
+می‌کند تا نتیجه منصفانه باشد.
+
+اضافه‌شده: decide_use_ml_filter — تصمیم خودکار این‌که آیا فیلتر ML برای این ارز به‌طور
+مشخص کمک می‌کند یا نه. بعضی ارزها (طبق داده‌ی واقعی) با فیلتر ML بدتر می‌شوند، نه بهتر —
+برای آن‌ها بهتر است سیگنال خام (بدون فیلتر) ارسال شود.
 """
 from __future__ import annotations
+import math
 import pandas as pd
 
 from strategy.core import generate_raw_signals, build_signal
@@ -33,8 +34,7 @@ def run_ml_filtered_backtest(df: pd.DataFrame, symbol: str, params: dict, risk_p
                               model, ml_threshold: float, test_only: bool = True) -> tuple[BacktestReport, BacktestReport]:
     """
     خروجی: (گزارش کامل rule-based، گزارش فیلترشده‌ی ML) — هر دو روی همان بازه‌ی داده.
-    اگر test_only=True (پیش‌فرض)، فقط روی بخش انتهایی (test split) اجرا می‌شود تا
-    منصفانه باشد (مدل این بخش را ندیده).
+    اگر test_only=True (پیش‌فرض)، فقط روی بخش انتهایی (test split) اجرا می‌شود.
     """
     d_full = generate_raw_signals(df, params)
     d = split_test_portion(d_full, TRAIN_RATIO) if test_only else d_full
@@ -72,7 +72,32 @@ def run_ml_filtered_backtest(df: pd.DataFrame, symbol: str, params: dict, risk_p
     return full_report, filtered_report
 
 
-# مسیر فایل: backtest/ml_filtered.py (فقط تابع print_comparison عوض شد)
+def decide_use_ml_filter(full_report: BacktestReport, filtered_report: BacktestReport,
+                          margin: float = 0.05, min_trades: int = 15) -> bool:
+    """
+    تصمیم می‌گیرد آیا فیلتر ML برای این ارز واقعاً کمک می‌کند یا نه، بر اساس مقایسه‌ی
+    Profit Factor خام در برابر فیلترشده روی همان test split.
+    """
+    n_raw = len(full_report.closed_trades)
+    if n_raw < min_trades:
+        return True
+
+    raw_pf = full_report.profit_factor
+    filt_pf = filtered_report.profit_factor
+
+    if math.isnan(raw_pf) or math.isnan(filt_pf):
+        return True
+
+    if math.isinf(raw_pf) and math.isinf(filt_pf):
+        return True
+    if math.isinf(filt_pf) and not math.isinf(raw_pf):
+        return True
+    if math.isinf(raw_pf) and not math.isinf(filt_pf):
+        return False
+
+    return filt_pf > (raw_pf + margin)
+
+
 def print_comparison(symbol: str, full_report: BacktestReport, filtered_report: BacktestReport):
     """چاپ خلاصه‌ی مقایسه‌ی rule-based خام در برابر فیلترشده‌ی ML، برای لاگ/کنسول."""
     def fmt(report: BacktestReport) -> str:
