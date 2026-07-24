@@ -3,6 +3,9 @@
 اجرای بک‌تست «کل سیستم» (rule-based + فیلتر واقعی ML) — فقط روی بخش انتهایی داده
 (همان test split که مدل موقع آموزش ندیده) تا نتیجه منصفانه و بدون look-ahead باشد.
 
+اصلاح‌شده: حالا use_ml_filter (تصمیم ذخیره‌شده در param_history) را هم می‌خواند و
+مشخص می‌کند کدام گزارش (خام یا فیلترشده) واقعاً همانی است که در سیستم زنده اجرا می‌شود.
+
 استفاده:
     python -m jobs.backtest_ml_filtered                  # همه‌ی واچ‌لیست
     python -m jobs.backtest_ml_filtered --symbol BTC      # فقط یک ارز
@@ -32,7 +35,7 @@ def load_config():
     return watchlist, params_default
 
 
-def get_active_params_safe(symbol: str, params_default: dict) -> dict:
+def get_active_params_safe(symbol: str, params_default: dict) -> dict | None:
     try:
         from storage.supabase_client import get_client, get_active_params
         client = get_client()
@@ -56,7 +59,7 @@ def run(symbol_filter: str | None = None, coinex_only: bool = False):
         try:
             model = load_latest_model(symbol_name)
             if model is None:
-                log.warning(f"{symbol_name}: مدل ML موجود نیست — رد شد (این تحلیل بدون مدل معنا ندارد).")
+                log.warning(f"{symbol_name}: مدل ML موجود نیست — رد شد.")
                 continue
 
             active = get_active_params_safe(symbol_name, params_default)
@@ -66,9 +69,11 @@ def run(symbol_filter: str | None = None, coinex_only: bool = False):
                     "tp2_r": active["tp2_r"], "tp3_r": active["tp3_r"],
                 }
                 ml_threshold = active["ml_threshold"]
+                use_ml_filter = active.get("use_ml_filter", True)
             else:
                 risk_params = params_default["risk_defaults"]
                 ml_threshold = params_default["ml_defaults"]["confidence_threshold"]
+                use_ml_filter = True
 
             df_coinex = coinex_fetch(coin["coinex_symbol"], watchlist["timeframe"])
             if coinex_only:
@@ -82,6 +87,13 @@ def run(symbol_filter: str | None = None, coinex_only: bool = False):
                 df, symbol_name, params_default, risk_params, model, ml_threshold, test_only=True
             )
             print_comparison(symbol_name, full_report, filtered_report)
+
+            effective = filtered_report if use_ml_filter else full_report
+            n_eff = len(effective.closed_trades)
+            print(f"  use_ml_filter = {use_ml_filter}  →  الان واقعاً در سیستم زنده همین گزارش "
+                  f"({'فیلترشده' if use_ml_filter else 'خام'}) اجرا می‌شود: "
+                  f"n={n_eff}, PF={effective.profit_factor:.2f}, win_rate={effective.win_rate:.1%}")
+            print()
 
         except Exception as e:
             log.exception(f"خطا در {symbol_name}: {e}")
