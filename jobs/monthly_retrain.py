@@ -8,10 +8,16 @@
   ۳. بهینه‌سازی Optuna پارامترهای ریسک (مستقل از مدل ML)
   ۴. Labeling (Triple-Barrier) + ری‌ترین مدل ML هر ارز
   ۵. انتخاب آستانه‌ی ML واقعی از روی منحنی precision-recall مدل تازه train‌شده
-  ۶. بک‌تست مقایسه‌ای (خام در برابر فیلترشده‌ی ML) روی test split برای تصمیم این‌که
-     آیا فیلتر ML اصلاً برای این ارز کمک می‌کند یا نه (use_ml_filter)
-  ۷. بررسی پایداری پارامتر + مقایسه با نسخه‌ی فعلی → پذیرش/رد
-  ۸. ذخیره در Supabase + تولید گزارش بک‌تست به‌روز (commit در گیت‌هاب)
+  ۶. بک‌تست مقایسه‌ای (خام در برابر فیلترشده‌ی ML) روی test split برای تصمیم use_ml_filter
+  ۷. ذخیره در Supabase + تولید گزارش بک‌تست به‌روز (commit در گیت‌هاب)
+
+نکته‌ی مهم (اصلاح‌شده): قبلاً وقتی پارامتر ریسک جدید بهبود کافی نداشت، کل ردیف
+(شامل آستانه‌ی ML و use_ml_filter که هر ماه تازه و مستقل محاسبه می‌شوند) با
+accepted=False ذخیره می‌شد و هرگز به‌عنوان «فعال» دیده نمی‌شد — یعنی حتی وقتی
+آستانه‌ی بسیار بهتری پیدا می‌شد، هیچ‌وقت اعمال نمی‌شد. چون risk_params ذخیره‌شده
+در این ردیف همیشه همان «بهترین انتخاب فعلی» است (چه جدید چه قدیمی، طبق final_risk
+که پایین‌تر مشخص می‌شود)، این ردیف همیشه باید بتواند فعال (accepted=True) شود.
+متغیر risk_improved جداگانه فقط برای شفافیت در notes نگه داشته می‌شود.
 """
 from __future__ import annotations
 import logging
@@ -89,9 +95,9 @@ def run():
                 "tp3_r": result["best_params"]["tp3_r"],
             }
 
-            # --- مقایسه با نسخه‌ی فعلی ریسک؛ پذیرش فقط با بهبود معنادار ---
+            # --- آیا پارامتر ریسک *جدید* بهبود معناداری دارد؟ (فقط برای شفافیت/notes) ---
             active = get_active_params(client, symbol_name)
-            accepted = True
+            risk_improved = True
             notes = "اولین نسخه" if not active else ""
             if active:
                 current_report = run_backtest(df_combined, symbol_name, params_default, {
@@ -100,10 +106,10 @@ def run():
                 })
                 new_report = run_backtest(df_combined, symbol_name, params_default, best_risk)
                 improvement = (new_report.profit_factor - current_report.profit_factor)
-                accepted = improvement > 0.1
-                notes = f"بهبود Profit Factor: {improvement:+.2f}"
+                risk_improved = improvement > 0.1
+                notes = f"بهبود Profit Factor ریسک جدید: {improvement:+.2f} (risk_improved={risk_improved})"
 
-            final_risk = best_risk if accepted else {
+            final_risk = best_risk if risk_improved else {
                 "atr_mult": active["atr_mult"], "tp1_r": active["tp1_r"],
                 "tp2_r": active["tp2_r"], "tp3_r": active["tp3_r"],
             } if active else params_default["risk_defaults"]
@@ -111,7 +117,7 @@ def run():
             # --- ری‌ترین ML با پارامترهای ریسک نهایی ---
             labeled = build_labeled_dataset(d, symbol_name, final_risk)
             ml_threshold = params_default["ml_defaults"]["confidence_threshold"]
-            use_ml_filter = True  # پیش‌فرض محافظه‌کارانه تا مقایسه‌ی واقعی انجام شود
+            use_ml_filter = True
 
             if len(labeled) >= 30:
                 train_result = train_model(labeled, symbol_name)
@@ -124,7 +130,6 @@ def run():
                 log.info(f"{symbol_name}: آستانه‌ی ML از منحنی precision-recall واقعی انتخاب شد: "
                          f"{ml_threshold:.3f} (قبلاً ثابت: {params_default['ml_defaults']['confidence_threshold']})")
 
-                # --- تصمیم: آیا فیلتر ML برای این ارز واقعاً کمک می‌کند؟ (روی test split) ---
                 fresh_model = load_latest_model(symbol_name)
                 full_report_ml, filtered_report_ml = run_ml_filtered_backtest(
                     df_combined, symbol_name, params_default, final_risk,
@@ -137,13 +142,14 @@ def run():
                 log.warning(f"{symbol_name}: داده‌ی کافی برای ری‌ترین ML نیست ({len(labeled)} نمونه) — "
                             f"آستانه‌ی پیش‌فرض ({ml_threshold}) و use_ml_filter=True نگه داشته می‌شود")
 
-            # --- ذخیره‌ی پارامتر نهایی (ریسک + آستانه‌ی واقعی ML + تصمیم فیلتر) ---
+            # --- ذخیره: این ردیف همیشه «بهترین پیکربندی فعلی» است -> همیشه accepted=True ---
             save_param_version(
                 client, symbol_name, result.get("version", "n/a"), final_risk,
                 ml_threshold=ml_threshold,
                 adjusted_score=result["best_score"],
                 weights=result["blending_weights"],
-                accepted=accepted, notes=notes,
+                accepted=True,  # اصلاح‌شده: این ردیف همیشه فعال می‌شود؛ risk_improved فقط در notes ثبت می‌شود
+                notes=notes,
                 use_ml_filter=use_ml_filter,
             )
 
@@ -152,7 +158,7 @@ def run():
             generate_html_report(report)
             reports.append(report)
 
-            log.info(f"{symbol_name}: accepted={accepted}, n_trades={report.n_trades}, "
+            log.info(f"{symbol_name}: risk_improved={risk_improved}, n_trades={report.n_trades}, "
                      f"win_rate={report.win_rate:.1%}, ml_threshold={ml_threshold:.3f}, "
                      f"use_ml_filter={use_ml_filter}")
 
